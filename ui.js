@@ -321,7 +321,7 @@
     } else if (ex.type === 'calc') {
       const DDR = root.DDR; const inputs = {};
       ex.fields.forEach(f => {
-        const inp = h('input', { type: 'text', placeholder: f.kind === 'text' ? 'p. ej. PC3-12800' : 'número (acepta coma o punto)', 'aria-label': f.label, autocomplete: 'off', spellcheck: 'false' });
+        const inp = h('input', { type: 'text', placeholder: f.placeholder || (f.kind === 'text' ? 'p. ej. PC3-12800' : f.exact ? 'número entero' : 'número (acepta coma o punto)'), 'aria-label': f.label, autocomplete: 'off', spellcheck: 'false' });
         inputs[f.key] = inp;
         card.append(h('div', { class: 'ans-row' }, h('label', null, f.label), inp, f.unit ? h('span', { class: 'muted' }, f.unit) : null));
       });
@@ -329,7 +329,7 @@
         let all = true; const blocks = [];
         ex.fields.forEach(f => {
           const ok = DDR.checkField(f, inputs[f.key].value); inputs[f.key].classList.toggle('ok', ok); inputs[f.key].classList.toggle('no', !ok); all = all && ok;
-          blocks.push(h('details', { open: ok ? null : true }, h('summary', null, (ok ? '✔ ' : '✘ ') + f.label + ' ' + (f.kind === 'text' ? f.answer : DDR.fmt(f.answer) + ' ' + f.unit)), h('div', { class: 'inner' }, f.steps.map(t => h('div', { style: 'margin:4px 0' }, t)))));
+          blocks.push(h('details', { open: ok ? null : true }, h('summary', null, (ok ? '✔ ' : '✘ ') + f.label + ' ' + (f.display != null ? f.display : f.kind === 'text' ? f.answer : DDR.fmt(f.answer) + ' ' + f.unit)), h('div', { class: 'inner' }, f.steps.map(t => h('div', { style: 'margin:4px 0' }, t)))));
         });
         record(all);
         feedback(all, all ? 'Todo bien.' : 'Revisa las que están en rojo; abajo tienes el desarrollo.', h('div', null, blocks, ex.tip ? h('div', { class: 'callout warn' }, ex.tip) : null));
@@ -338,6 +338,53 @@
       actions.append(h('button', { class: 'btn primary', onclick: check }, 'Comprobar'));
       const hb = h('div', { class: 'callout hint', hidden: true, html: 'a) t = ciclos ÷ f_CPU(GHz) → ns<br>b) transferencias = bytes ÷ (8 × canales) (si no es entero, hacia arriba)<br>c) f_bus = MT/s ÷ 2<br>d) t_mem = transferencias ÷ MT/s (µs → ×1000 = ns)<br>e) PCn-X ↔ DDRn-(X÷8)<br>f) t_total = a) + d)' });
       actions.append(h('button', { class: 'btn', onclick: () => { hb.hidden = !hb.hidden; } }, 'Fórmulas')); card.append(hb);
+    } else if (ex.type === 'fill') {
+      const sels = ex.slots.map((s, k) => {
+        const sel = h('select', { 'aria-label': 'Hueco ' + (k + 1) }, h('option', { value: '' }, '— elige —'), ...s.opts.map((o, j) => h('option', { value: j }, o)));
+        card.append(h('div', { class: 'ans-row' }, h('label', null, '(' + (k + 1) + ')'), sel)); return sel;
+      });
+      const check = () => {
+        if (sels.some(s => s.value === '')) { out.innerHTML = ''; out.append(h('div', { class: 'callout warn' }, 'Elige una opción en cada hueco.')); return; }
+        const ch = sels.map(s => +s.value); const ok = ex.verify(ch);
+        sels.forEach((s, k) => { const good = ch[k] === ex.slots[k].ans; s.classList.toggle('ok', good); s.classList.toggle('no', !good); });
+        record(ok);
+        const exact = ch.every((c, k) => c === ex.slots[k].ans);
+        feedback(ok, ok ? (exact ? 'El programa produce el resultado esperado.' : 'Tu versión no es la original pero se comporta igual: el resultado coincide.') : 'Al ejecutar tu versión el resultado NO es el esperado.',
+          h('div', null, ex.slots.map((s, k) => h('div', { style: 'margin:8px 0' }, h('b', null, '(' + (k + 1) + ') '), h('code', null, s.orig), h('div', { class: 'small' }, (s.why[0] ? s.why[0] + ' — ' : '') + s.why[1]))),
+            h('details', null, h('summary', null, 'Ver el programa completo'), h('div', { class: 'inner' }, codeBlock(ex.full))), h('div', { class: 'row', style: 'margin-top:8px' }, solutionBar(ex.runSource, 'Ejercicio'))));
+      };
+      actions.append(h('button', { class: 'btn primary', onclick: check }, 'Comprobar'));
+      if (ex.hint) { const hb = h('div', { class: 'callout hint', hidden: true }, '💡 ' + ex.hint); actions.append(h('button', { class: 'btn', onclick: () => { hb.hidden = !hb.hidden; } }, 'Pista')); card.append(hb); }
+    } else if (ex.type === 'tracestep') {
+      const ins = [];
+      const tableFor = (inputs) => {
+        const tbl = h('table'); tbl.append(h('thead', null, h('tr', null, h('th', null, '#'), h('th', null, 'Instrucción'), ex.cols.map(c => h('th', null, c.label)))));
+        const body = h('tbody');
+        ex.rows.forEach((r, ri) => {
+          const tr = h('tr', null, h('td', null, ri + 1), h('td', null, h('code', null, r.ins)));
+          const rowIns = {};
+          ex.cols.forEach(c => {
+            const cell = r.cells[c.key];
+            if (inputs && cell.ask) { const inp = h('input', { type: 'text', class: 'trace-in', 'aria-label': c.label + ' tras ' + r.ins, autocomplete: 'off', spellcheck: 'false' }); rowIns[c.key] = inp; tr.append(h('td', null, inp)); }
+            else tr.append(h('td', { class: cell.ask ? '' : 'muted', style: !inputs && cell.ask ? 'font-weight:700;color:var(--good)' : null }, cell.v));
+          });
+          if (inputs) ins.push(rowIns); body.append(tr);
+        });
+        tbl.append(body); return h('div', { class: 'tscroll' }, tbl);
+      };
+      card.append(tableFor(true));
+      const check = () => {
+        let all = true; let wrong = 0, total = 0;
+        ex.rows.forEach((r, ri) => ex.cols.forEach(c => {
+          const inp = ins[ri][c.key]; if (!inp) return; const want = r.cells[c.key].v; total++;
+          const ok = (c.key === 'al' && ex.text) ? inp.value === want : Ex.parseIn(inp.value, 10) === Ex.parseIn(want, 10);
+          inp.classList.toggle('ok', ok); inp.classList.toggle('no', !ok); if (!ok) { all = false; wrong++; inp.title = 'Correcto: ' + want; }
+        }));
+        record(all);
+        feedback(all, all ? 'Traza perfecta (' + total + ' celdas).' : wrong + ' de ' + total + ' celdas están mal (en rojo; pasa el ratón para ver el valor correcto). Esta es la tabla correcta (en verde lo que te tocaba rellenar):', h('div', null, tableFor(false), h('div', { class: 'row', style: 'margin-top:8px' }, solutionBar(ex.runSource, 'Ejercicio'))));
+      };
+      actions.append(h('button', { class: 'btn primary', onclick: check }, 'Comprobar'));
+      if (ex.hint) { const hb = h('div', { class: 'callout hint', hidden: true }, '💡 ' + ex.hint); actions.append(h('button', { class: 'btn', onclick: () => { hb.hidden = !hb.hidden; } }, 'Pista')); card.append(hb); }
     } else if (ex.type === 'trace') {
       const tbl = h('table'); const ins = [];
       tbl.append(h('thead', null, h('tr', null, h('th', null, 'Vuelta'), ex.cols.map(c => h('th', null, c.label)))));
@@ -366,7 +413,7 @@
       actions.append(h('button', { class: 'btn primary', onclick: check }, 'Comprobar'));
       if (ex.hint) { const hb = h('div', { class: 'callout hint', hidden: true }, '💡 ' + ex.hint); actions.append(h('button', { class: 'btn', onclick: () => { hb.hidden = !hb.hidden; } }, 'Pista')); card.append(hb); }
     }
-    if (hooks.onNext) actions.append(h('button', { class: 'btn', onclick: () => hooks.onNext() }, 'Siguiente ejercicio →'));
+    if (hooks.onNext) actions.append(h('button', { class: 'btn', onclick: () => hooks.onNext() }, hooks.nextLabel || 'Siguiente ejercicio →'));
     card.append(actions, out);
     host.append(card);
   }

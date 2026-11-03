@@ -7,30 +7,34 @@
   const sim = UI.Sim();
   let pendingSim = null;
 
+  const GROUPS = { q2: 'Pregunta 2 · Memoria y tiempos', q3: 'Pregunta 3 · Ensamblador' };
   const SECTIONS = [
     { id: 'map', icon: '🧭', title: 'La prueba', sub: 'Qué preguntan y cómo se responde', render: secMap },
-    { id: 'ddr', icon: '💾', title: 'Pregunta 2: memoria', sub: 'Fórmulas, ns y transferencias', render: secDDR },
-    { id: 'nums', icon: '🔢', title: 'Números y ASCII', sub: 'Base para poder trazar', render: secNums },
-    { id: 'anat', icon: '🧱', title: 'Anatomía del programa', sub: 'Línea por línea', render: secAnat },
-    { id: 'regs', icon: '🧠', title: 'Registros y banderas', sub: 'Punteros, memoria, ZF/CF', render: secRegs },
-    { id: 'instr', icon: '📖', title: 'Instrucciones', sub: 'Qué hace cada una', render: secInstr },
-    { id: 'sim', icon: '▶', title: 'Simulador', sub: 'Paso a paso', render: secSim },
-    { id: 'solved', icon: '✅', title: 'Pruebas resueltas', sub: 'Las 6 baterías', render: secSolved },
-    { id: 'practice', icon: '🏋', title: 'Ejercicios', sub: 'Infinitos, con corrección', render: secPractice },
-    { id: 'mock', icon: '📝', title: 'Simulacro', sub: 'Pregunta 3 completa', render: secMock }
+    { id: 'ddr', group: 'q2', icon: '💾', title: 'Conceptos y fórmulas', sub: 'Qué es cada dato y cada fórmula', render: secDDR },
+    { id: 'ddrcalc', group: 'q2', icon: '🧮', title: 'Calculadora y resueltas', sub: 'Paso a paso · las 6 baterías', render: secDDRCalc },
+    { id: 'ddrpract', group: 'q2', icon: '🏋', title: 'Ejercicios', sub: 'Series y banco ilimitado', render: secDDRPractice },
+    { id: 'nums', group: 'q3', icon: '🔢', title: 'Números y ASCII', sub: 'Base para poder trazar', render: secNums },
+    { id: 'anat', group: 'q3', icon: '🧱', title: 'Anatomía del programa', sub: 'Línea por línea', render: secAnat },
+    { id: 'regs', group: 'q3', icon: '🧠', title: 'Registros y banderas', sub: 'Punteros, memoria, ZF/CF', render: secRegs },
+    { id: 'instr', group: 'q3', icon: '📖', title: 'Instrucciones', sub: 'Qué hace cada una', render: secInstr },
+    { id: 'sim', group: 'q3', icon: '▶', title: 'Simulador', sub: 'Paso a paso', render: secSim },
+    { id: 'solved', group: 'q3', icon: '✅', title: 'Pruebas resueltas', sub: 'Las 6 baterías', render: secSolved },
+    { id: 'practice', group: 'q3', icon: '🏋', title: 'Ejercicios', sub: 'Traceo, completado y más', render: secPractice },
+    { id: 'mock', group: 'q3', icon: '📝', title: 'Simulacro', sub: 'Pregunta 3 completa', render: secMock }
   ];
 
   /* ---------- shell ---------- */
   const nav = document.getElementById('nav');
-  SECTIONS.forEach((s, i) => nav.append(h('button', { 'data-id': s.id, onclick: () => go(s.id) }, h('span', { class: 'n' }, i + 1), h('span', null, s.title, h('small', { class: 'muted', style: 'display:block;font-size:.76rem' }, s.sub)))));
+  let lastGroup = null;
+  SECTIONS.forEach((s, i) => { if (s.group && s.group !== lastGroup) nav.append(h('div', { class: 'grp ' + s.group }, GROUPS[s.group])); lastGroup = s.group || null; nav.append(h('button', { 'data-id': s.id, onclick: () => go(s.id) }, h('span', { class: 'n' }, i + 1), h('span', null, s.title, h('small', { class: 'muted', style: 'display:block;font-size:.76rem' }, s.sub)))); });
   const side = document.getElementById('side');
   document.getElementById('menu').addEventListener('click', () => side.classList.toggle('open'));
   function go(id) {
     const s = SECTIONS.find(x => x.id === id) || SECTIONS[0];
     sim.stop();
-    [...nav.children].forEach(b => b.setAttribute('aria-current', b.dataset.id === s.id ? 'page' : 'false'));
+    [...nav.querySelectorAll('button')].forEach(b => b.setAttribute('aria-current', b.dataset.id === s.id ? 'page' : 'false'));
     view.innerHTML = '';
-    view.append(h('div', { class: 'sec-head' }, h('h1', null, s.icon + ' ' + s.title)));
+    view.append(h('div', { class: 'sec-head' }, s.group ? h('span', { class: 'gtag ' + s.group }, GROUPS[s.group]) : null, h('h1', null, s.icon + ' ' + s.title)));
     s.render();
     side.classList.remove('open');
     window.scrollTo(0, 0);
@@ -121,17 +125,52 @@
   /* =====================================================================
      PREGUNTA 2: MEMORIA Y TIEMPOS
      ===================================================================== */
-  function practiceBlock(list, key) {
-    let cat = Store.get(key, list[0][0]); if (!list.some(c => c[0] === cat)) cat = list[0][0];
-    const chips = h('div', { class: 'tabsrow', role: 'group', 'aria-label': 'Tipos de ejercicio' }); const desc = h('p', { class: 'muted small' }); const host = h('div');
+  function practiceBlock(list, key, intro) {
+    const main = list.filter(c => !c[3]), more = list.filter(c => c[3]);
+    const mixItem = ['mix', '🎲 Mezcla', 'Un ejercicio de cada tipo al azar, como en una prueba real.'];
+    const chipList = main.length > 1 ? [mixItem, ...main] : main; const all = [...chipList, ...more];
+    let cat = Store.get(key, chipList[0][0]); if (!all.some(c => c[0] === cat)) cat = chipList[0][0];
+    let serie = 0; let S = null;
+    const chips = h('div', { class: 'tabsrow', role: 'group', 'aria-label': 'Tipos de ejercicio' }); const chips2 = h('div', { class: 'tabsrow', role: 'group', 'aria-label': 'Más práctica' });
+    const modeRow = h('div', { class: 'row', style: 'margin:6px 0' }); const desc = h('p', { class: 'muted small' }); const bar = h('div'); const host = h('div');
+    const pickCat = () => (cat === 'mix' ? Ex.pick(main.map(c => c[0])) : cat);
+    const chipBtn = ([id, lb]) => { const s = Stats.data[id]; return h('button', { class: 'chip', 'aria-pressed': id === cat ? 'true' : 'false', onclick: () => { cat = id; Store.set(key, id); restart(); } }, lb, s ? h('span', { class: 'sc' }, s.ok + '/' + s.n) : null); };
     function drawChips() {
-      chips.innerHTML = '';
-      list.forEach(([id, lb]) => { const s = Stats.data[id]; chips.append(h('button', { class: 'chip', 'aria-pressed': id === cat ? 'true' : 'false', onclick: () => { cat = id; Store.set(key, id); drawChips(); next(); } }, lb, s ? h('span', { class: 'sc' }, s.ok + '/' + s.n) : null)); });
-      desc.textContent = list.find(c => c[0] === cat)[2];
+      chips.innerHTML = ''; chips2.innerHTML = '';
+      chipList.forEach(c => chips.append(chipBtn(c)));
+      if (more.length) { chips2.append(h('span', { class: 'small muted', style: 'align-self:center' }, 'Más práctica:'), ...more.map(chipBtn)); }
+      desc.textContent = (all.find(c => c[0] === cat) || chipList[0])[2];
+      modeRow.innerHTML = ''; modeRow.append(h('span', { class: 'small muted' }, 'Modo:'),
+        ...[[0, 'Libre'], [10, 'Serie de 10'], [20, 'Serie de 20'], [30, 'Serie de 30']].map(([n, lb]) => h('button', { class: 'chip', 'aria-pressed': serie === n ? 'true' : 'false', onclick: () => { serie = n; restart(); } }, lb)));
     }
-    function next() { renderExercise(Ex.make(cat), host, { onResult: (c, ok) => { Stats.add(c, ok); drawChips(); }, onNext: next, openSim }); }
+    function drawBar() {
+      bar.innerHTML = ''; if (!S) return;
+      const done = S.res.filter(Boolean).length, ok = S.res.filter(r => r && r.ok).length, bad = S.res.filter(r => r && r.ok === false).length;
+      bar.append(h('div', { class: 'card', style: 'padding:10px 14px' }, h('div', { class: 'score' }, h('b', null, 'Serie de ' + serie + ' · ejercicio ' + Math.min(S.i + 1, serie) + ' de ' + serie), h('span', { style: 'color:var(--good)' }, '✔ ' + ok), h('span', { style: 'color:var(--bad)' }, '✘ ' + bad), h('span', null, done - ok - bad > 0 ? '· ' + (done - ok - bad) + ' saltados' : '')), h('div', { class: 'bar', style: 'margin-top:6px' }, h('i', { style: 'width:' + Math.round(S.i / serie * 100) + '%' }))));
+    }
+    function summary() {
+      host.innerHTML = ''; bar.innerHTML = '';
+      const ok = S.res.filter(r => r && r.ok).length; const by = {};
+      S.res.forEach(r => { if (!r) return; const c = by[r.cat] || (by[r.cat] = { n: 0, ok: 0 }); c.n++; if (r.ok) c.ok++; });
+      const pct = Math.round(ok / serie * 100);
+      host.append(h('div', { class: 'card' }, h('h2', { style: 'margin-top:0' }, 'Serie terminada: ' + ok + ' / ' + serie + ' (' + pct + '%)'),
+        h('p', null, pct >= 85 ? '¡Muy bien! Estás para la prueba en este tipo de ejercicio.' : pct >= 60 ? 'Vas bien; repasa las categorías con menos aciertos.' : 'Hay que repasar: vuelve a la teoría de esta pregunta y repite la serie.'),
+        h('div', { class: 'tscroll' }, h('table', null, h('thead', null, h('tr', null, h('th', null, 'Tipo'), h('th', null, 'Aciertos'))), h('tbody', null, Object.entries(by).map(([c, v]) => h('tr', null, h('td', null, (all.find(x => x[0] === c) || [c, c])[1]), h('td', null, v.ok + ' / ' + v.n)))))),
+        h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn primary', onclick: restart }, 'Repetir la serie'), h('button', { class: 'btn', onclick: () => { serie = 0; restart(); } }, 'Volver al modo libre'))));
+    }
+    function next() {
+      if (S && S.i >= serie) { summary(); return; }
+      const ex = Ex.make(pickCat());
+      renderExercise(ex, host, {
+        onResult: (c, ok) => { Stats.add(c, ok); if (S) S.res[S.i] = { cat: c, ok }; drawChips(); drawBar(); },
+        onNext: () => { if (S) { if (!S.res[S.i]) S.res[S.i] = { cat: ex.cat, ok: null }; S.i++; } next(); },
+        nextLabel: S ? (S.i + 1 >= serie ? 'Terminar serie →' : 'Siguiente (' + (S.i + 2) + '/' + serie + ') →') : null, openSim
+      });
+      drawBar();
+    }
+    function restart() { S = serie ? { i: 0, res: [] } : null; drawChips(); next(); }
     drawChips(); next();
-    return h('div', null, chips, desc, host);
+    return h('div', null, intro || null, chips, chips2, modeRow, desc, bar, host);
   }
 
   function secDDR() {
@@ -168,10 +207,6 @@
       h('div', { class: 'grid2', style: 'align-items:start' },
         card(h('h3', null, 'Decodificador'), memDecoder()),
         card(h('h3', null, 'Generaciones'), h('div', { class: 'tscroll' }, h('table', null, h('thead', null, h('tr', null, ['DDR', 'PC', 'MT/s', 'Bus (MHz)', 'MB/s'].map(t => h('th', null, t)))), h('tbody', null, D.PAIRS.map(q => h('tr', null, h('td', null, D.ddrName(q.gen, q.mts)), h('td', null, D.pcName(q.gen, q.mbps)), h('td', null, q.mts), h('td', null, q.mts / 2), h('td', null, q.mbps)))))), h('p', { class: 'small muted' }, 'El número de PC es MB/s de un módulo: MT/s × 8 bytes. DDR4-3200 ↔ PC4-25600 porque 3200 × 8 = 25600.'))),
-      h('h2', null, 'Calculadora paso a paso'),
-      card(memCalc()),
-      h('h2', null, 'Las 6 pruebas resueltas'),
-      ...D.EXAMS.map((e, i) => solvedDDR(e, i === 0)),
       callout('warn', h('b', null, 'Errores típicos: '), h('ul', null,
         h('li', null, 'Usar 1600 como si fuera MHz del bus: 1600 son MT/s; el bus va a 800 MHz.'),
         h('li', null, 'Olvidar los canales: con triple canal cada transferencia mueve 24 B, no 8.'),
@@ -181,8 +216,29 @@
         h('li', null, 'Olvidar sumar a) + d) en f).'),
         h('li', null, 'Batería B 2024: 360 ÷ 16 = 22.5. Se redondea a 23 (la última transferencia va incompleta). Pon el desarrollo y, si quieres, el valor sin redondear (3.75 ns / 43.75 ns).'))),
       callout('', h('b', null, 'Una duda legítima: '), 'en la pregunta c) «frecuencia del bus» aquí uso el reloj del bus (MT/s ÷ 2, p. ej. 800 MHz para DDR3-1600). Algunos apuntes llaman «frecuencia» también a la velocidad efectiva (1600 MHz). Si tu profesor lo hace así, el tiempo d) NO cambia, solo cómo lo nombras: contrasta con tus apuntes.'),
-      h('h2', null, 'Practica'),
-      practiceBlock([['ddrconv', 'Conversión rápida', 'Notación PC ↔ DDR, MT/s, MHz, períodos, canales y ancho de banda.'], ['ddr', 'Una parte (a–f)', 'Un enunciado completo; calcula un solo apartado.'], ['ddrfull', 'Pregunta 2 completa', 'Los 6 apartados como en la prueba.']], 'ddrcat'));
+      h('div', { class: 'row', style: 'margin:16px 0' }, h('button', { class: 'btn primary', onclick: () => go('ddrcalc') }, 'Siguiente: calculadora y pruebas resueltas →'), h('button', { class: 'btn', onclick: () => go('ddrpract') }, 'Ir directo a los ejercicios')));
+  }
+
+  function secDDRCalc() {
+    const D = window.DDR;
+    view.append(
+      callout('', 'Escribe los datos de cualquier enunciado y obtienes los 6 apartados con la sustitución de valores. Más abajo están las 6 baterías de las pruebas viejas, resueltas.'),
+      h('h2', null, 'Calculadora paso a paso'),
+      card(memCalc()),
+      h('h2', null, 'Las 6 pruebas resueltas'),
+      ...D.EXAMS.map((e, i) => solvedDDR(e, i === 0)),
+      h('div', { class: 'row', style: 'margin:16px 0' }, h('button', { class: 'btn primary', onclick: () => go('ddrpract') }, 'Siguiente: ejercicios →')));
+  }
+
+  function secDDRPractice() {
+    view.append(practiceBlock([
+      ['ddrfull', 'Pregunta 2 completa', 'Los 6 apartados a) – f) como en la prueba, con enunciado nuevo cada vez.'],
+      ['ddr', 'Un apartado (a–f)', 'Un enunciado completo; calcula un solo apartado.'],
+      ['ddrconv', 'Conversión rápida', 'Notación PC ↔ DDR, MT/s, MHz, períodos, canales y ancho de banda.'],
+      ['ddrinv', 'Problemas inversos', 'Te dan el resultado (tiempo, MT/s…) y calculas un dato del enunciado.'],
+      ['ddrcmp', 'Comparar configuraciones', '¿Qué combinación de memorias y canales transfiere más rápido?'],
+      ['ddrteo', 'Teoría de memoria', 'Preguntas conceptuales: DDR, MT/s, canales, notación PC.']], 'ddrcat',
+      callout('', 'Empieza por la «Pregunta 2 completa» en una serie de 10: así comprobarás si te sale sin mirar la hoja de fórmulas. Cada ejercicio muestra el desarrollo paso a paso al corregir.')));
   }
 
   function memDecoder() {
@@ -466,14 +522,17 @@
      8. EJERCICIOS
      ===================================================================== */
   const CATS = [
-    ['num', 'Números / V-F', 'Conversión de bases, ASCII y Verdadero/Falso como en el apartado 5 de la pregunta 1.'],
-    ['dir', 'a) Conceptos y directivas', 'org, times, dw 0AA55h, jmp $, dup, etiquetas… y preguntas de teoría.'],
-    ['instr', 'b) Explica la instrucción', 'Elige la función de la línea subrayada.'],
+    ['trace', 'Traceo de código', 'Tabla de traceo instrucción por instrucción, por vueltas, estado a mitad del ciclo y conteo de saltos.'],
+    ['fill', 'Completar el código', 'Elige las instrucciones que faltan para que el programa haga lo pedido; se corrige ejecutando tu versión.'],
     ['pred', 'c) Predice la memoria', '¿Qué queda en num2 / cadena2 al final?'],
     ['what', 'd) ¿Qué pasa si…?', 'Inversión de saltos y cambios de rango.'],
-    ['trace', 'Traceo por vueltas', 'Tabla de traza, conteo de vueltas y valores finales.'],
-    ['jump', '¿Qué salto falta?', 'Deduce el salto condicional a partir del resultado.'],
-    ['extra', 'Extras (por si acaso)', 'Mayúsculas ↔ minúsculas y acumuladores en registros: no han caído aún.']
+    ['instr', 'b) Explica la instrucción', 'Elige la función de la línea subrayada.'],
+    ['dir', 'a) Directivas y conceptos', 'org, times, dw 0AA55h, jmp $, dup, etiquetas… y preguntas de teoría.'],
+    ['vf', 'Verdadero / Falso', 'Afirmaciones sobre instrucciones, directivas y banderas.', true],
+    ['micro', 'Banderas y registros', 'Mini-traceos de 2–4 instrucciones: AL, ZF, CF, punteros y ciclos cortos.', true],
+    ['layout', 'Direcciones y tamaños', 'times, firma 55h AAh, dup, little-endian y direcciones de etiquetas.', true],
+    ['num', 'Números y ASCII', 'Conversión de bases, ASCII y Verdadero/Falso de sistemas numéricos.', true],
+    ['extra', 'Extras (por si acaso)', 'Mayúsculas ↔ minúsculas y acumuladores en registros: no han caído aún.', true]
   ];
   const current = {};
   function practiceMount(cat) {
@@ -482,16 +541,7 @@
     next(); return h('div', null, info, host);
   }
   function secPractice() {
-    let cat = Store.get('cat', 'pred');
-    const chips = h('div', { class: 'tabsrow', role: 'group', 'aria-label': 'Categorías' }); const desc = h('p', { class: 'muted small' }); const host = h('div');
-    function drawChips() {
-      chips.innerHTML = '';
-      CATS.forEach(([id, lb]) => { const s = Stats.data[id]; chips.append(h('button', { class: 'chip', 'aria-pressed': id === cat ? 'true' : 'false', onclick: () => { cat = id; Store.set('cat', id); drawChips(); next(); } }, lb, s ? h('span', { class: 'sc' }, s.ok + '/' + s.n) : null)); });
-      desc.textContent = CATS.find(c => c[0] === cat)[2];
-    }
-    function next() { const ex = Ex.make(cat); renderExercise(ex, host, { onResult: (c, ok) => { Stats.add(c, ok); drawChips(); }, onNext: next, openSim }); }
-    view.append(callout('', 'Cada ejercicio se genera al azar y su respuesta sale de ejecutar el programa en el emulador, así que puedes hacer cientos. Sigue el estilo de las pruebas: mismas instrucciones, mismos apartados.'), chips, desc, host);
-    drawChips(); next();
+    view.append(practiceBlock(CATS, 'cat3', callout('', h('b', null, 'Lo que piden en la prueba va primero: '), 'traceo, completar código y las partes a) b) c) d). Cada ejercicio se genera al azar y su respuesta sale de ejecutar el programa en el emulador, así que puedes hacer cientos. Usa una ', h('b', null, 'serie'), ' de 10, 20 o 30 para practicar con marcador.')));
   }
 
   /* =====================================================================

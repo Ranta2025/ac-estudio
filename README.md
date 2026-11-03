@@ -2,11 +2,12 @@
 
 Material de estudio para las pruebas parciales de Arquitectura de Computadoras, basado en las baterías anteriores (2023, 2024 y 2024-25).
 
-Cubre:
+Está organizado en dos bloques, cada uno con su teoría, práctica y ejercicios:
 
-- **Pregunta 3 — Ensamblador (FASM, sector de arranque 8086):** anatomía del programa, registros y banderas, instrucciones, simulador paso a paso, las 6 pruebas resueltas, ejercicios generados al azar y simulacro completo.
-- **Pregunta 2 — Memoria y tiempos (DDR):** hoja de fórmulas, qué es cada dato, decodificador de nombres (`DDR4-3200` ↔ `PC4-25600`), calculadora paso a paso, las 6 pruebas resueltas y ejercicios.
-- **Sistemas numéricos y ASCII** como base para trazar.
+- **Pregunta 2 — Memoria y tiempos (DDR):** conceptos y hoja de fórmulas, calculadora paso a paso con las 6 pruebas resueltas, y ejercicios (pregunta completa, un apartado, conversiones, problemas inversos, comparar configuraciones y teoría).
+- **Pregunta 3 — Ensamblador (FASM, sector de arranque 8086):** números y ASCII, anatomía del programa, registros y banderas, instrucciones, simulador paso a paso, las 6 pruebas resueltas, ejercicios y simulacro completo.
+
+Los ejercicios de la pregunta 3 se centran en lo que piden las pruebas: **traceo de código** (por instrucción, por vueltas, estado a mitad del ciclo, conteo de saltos), **completar el código** (varios huecos, corregido ejecutando tu versión) y los apartados a) b) c) d). Además hay práctica extra: verdadero/falso, banderas y registros, direcciones y tamaños. Todos admiten **series** de 10, 20 o 30 ejercicios con marcador final.
 
 ## Cómo usarlo
 
@@ -20,8 +21,9 @@ Las respuestas de los ejercicios no están escritas a mano: salen de ejecutar el
 | --- | --- |
 | `emu.js` | Ensamblador + emulador 8086 (banderas, saltos, `loop`, `db/dw/dup/times`, `@@/@f/@b`) |
 | `programs.js` | Los 6 programas de la pregunta 3 con sus líneas subrayadas y variantes del apartado d) |
-| `ddr.js` | Motor de la pregunta 2 (fórmulas, pasos, generador) |
-| `content.js`, `exercises.js` | Contenido didáctico y generadores de ejercicios |
+| `ddr.js` | Motor de la pregunta 2 (fórmulas, pasos, generadores) |
+| `content.js` | Contenido didáctico, banco de preguntas y de verdadero/falso |
+| `exercises.js`, `exercises2.js` | Generadores de ejercicios de la pregunta 3 (filtros, traceo, completado, banderas, direcciones) |
 | `ui.js`, `app.js`, `style.css`, `index.html` | Interfaz |
 
 ## Pruebas
@@ -30,6 +32,7 @@ Las respuestas de los ejercicios no están escritas a mano: salen de ejecutar el
 node test/emu.test.js
 node test/ddr.test.js
 node test/exercises.test.js
+node test/exercises2.test.js
 ```
 
 ## Supuestos a contrastar con los apuntes
