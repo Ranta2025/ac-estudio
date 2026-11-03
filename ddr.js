@@ -79,23 +79,17 @@
     f: '¿Cuánto demora el procesador en total para ejecutar la instrucción?'
   };
 
-  /* worked steps for each part */
+  /* explanatory text for each part (the typeset formulas, see formulas.js, carry the numbers) */
   function steps(p, s) {
     const m = s.mem; const st = {};
-    st.a = ['Fórmula: t = ciclos ÷ f_CPU.   (Con la frecuencia en GHz, el resultado sale directo en ns, porque 1 GHz ↔ 1 ns de período.)',
-      't = ' + p.cycles + ' ÷ ' + p.cpuGHz + ' GHz = ' + fmt(s.fetchNs) + ' ns'];
-    st.b = ['Cada módulo mueve 64 bits = 8 bytes por transferencia, y los canales trabajan en paralelo:  bytes por transferencia = 8 B × canales = 8 × ' + p.channels + ' = ' + s.perTransfer + ' B.',
-      'Transferencias = bytes ÷ bytes por transferencia = ' + p.bytes + ' ÷ ' + s.perTransfer + ' = ' + fmt(s.exact) + (s.integer ? '' : '  → no es entero: la última transferencia queda incompleta, se redondea hacia ARRIBA ⇒ ' + s.transfers),
-      'Resultado: ' + s.transfers + ' transferencias'];
-    st.c = [m.prefix === 'DDR' ? 'El nombre ' + m.given + ' ya da la velocidad efectiva: ' + m.mts + ' MT/s (millones de transferencias por segundo).' : 'El nombre ' + m.given + ' da el ancho de banda de un módulo: ' + m.mbps + ' MB/s. Como cada transferencia son 8 B ⇒ MT/s = ' + m.mbps + ' ÷ 8 = ' + m.mts + ' MT/s (≡ ' + m.ddr + ').',
-      'DDR = doble tasa: transfiere 2 veces por ciclo de reloj (flanco de subida y de bajada) ⇒ f_bus = MT/s ÷ 2 = ' + m.mts + ' ÷ 2 = ' + fmt(s.busMHz) + ' MHz'];
-    st.d = ['Cada transferencia dura 1 ÷ MT/s. Como las transferencias ya incluyen todos los canales:  t_mem = transferencias ÷ MT/s.',
-      't_mem = ' + s.transfers + ' ÷ ' + m.mts + ' MT/s = ' + fmt(s.transfers / m.mts, 6) + ' µs = ' + fmt(s.memNs) + ' ns',
-      'Comprobación con el bus: ' + fmt(s.busCycles, 2) + ' ciclos de bus × ' + fmt(s.busPeriodNs, 4) + ' ns (período del bus) = ' + fmt(s.busCycles * s.busPeriodNs) + ' ns.'];
-    st.e = ['Regla: PCn-X  ↔  DDRn-(X ÷ 8)   y   DDRn-Y  ↔  PCn-(Y × 8)   (X en MB/s, Y en MT/s; 8 = bytes por transferencia).',
-      m.prefix === 'DDR' ? m.given + ' ↔ PC' + m.gen + '-' + m.mts + ' × 8 = ' + s.alt : m.given + ' ↔ DDR' + m.gen + '-(' + m.mbps + ' ÷ 8) = ' + s.alt];
-    st.f = ['t_total = t_captación + t_memoria  (se suman porque primero se capta/decodifica y después se transfieren los datos).',
-      't_total = ' + fmt(s.fetchNs) + ' ns + ' + fmt(s.memNs) + ' ns = ' + fmt(s.totalNs) + ' ns'];
+    st.a = ['Los ciclos se convierten en tiempo con el período del procesador. Con la frecuencia en GHz el resultado sale directo en ns (1 GHz ↔ período de 1 ns).'];
+    st.b = ['Cada módulo mueve 64 bits = 8 bytes por transferencia y los canales trabajan en paralelo, así que B_tr = 8 B × canales.',
+      s.integer ? 'La división es exacta.' : 'La división no es exacta: la última transferencia queda incompleta y se redondea hacia ARRIBA (⌈ ⌉).'];
+    st.c = [m.prefix === 'DDR' ? 'El nombre ' + m.given + ' ya da la velocidad efectiva v_ef en MT/s.' : 'El número de ' + m.given + ' es el ancho de banda de UN módulo en MB/s; como cada transferencia son 8 B, se pasa a MT/s (≡ ' + m.ddr + ').',
+      'DDR transfiere 2 veces por ciclo del reloj (flanco de subida y de bajada), por eso la frecuencia del bus es la MITAD de los MT/s.'];
+    st.d = ['Un MT/s son 10⁶ transferencias por segundo: dividir las transferencias entre los MT/s da µs, y se multiplica por 1000 para pasar a ns. Las transferencias ya incluyen todos los canales.'];
+    st.e = ['Se pasa de un nombre al otro multiplicando o dividiendo por 8 (8 bytes por transferencia): el número de PC son MB/s y el de DDR son MT/s.'];
+    st.f = ['Primero la CPU capta y decodifica y después se transfieren los datos: los dos tiempos se suman.'];
     return st;
   }
 
@@ -215,28 +209,28 @@
     if (kind === 'bytes') {
       const bytes = transfers * 8 * c;
       return mkx('Se transfieren datos con ' + c + (c === 1 ? ' memoria ' : ' memorias ') + name + ' en ' + CH_NAME[c] + '. La memoria demora ' + t + ' ns en el proceso. ¿Cuántos bytes se transfirieron?',
-        [F('r', 'Bytes', bytes, 'bytes', [mtsTxt + '.', 'Transferencias = t × MT/s ÷ 1000 = ' + t + ' × ' + pair.mts + ' ÷ 1000 = ' + transfers + '.', 'Bytes = transferencias × 8 × canales = ' + transfers + ' × 8 × ' + c + ' = ' + bytes + '.'])]);
+        [F('r', 'Bytes', bytes, 'bytes', [mtsTxt + '.', 'Transferencias = t × MT/s ÷ 1000 = ' + t + ' × ' + pair.mts + ' ÷ 1000 = ' + transfers + '.', 'Bytes = transferencias × 8 × canales = ' + transfers + ' × 8 × ' + c + ' = ' + bytes + '.'], { fxIds: ['d1b', 'b2', 'inv1'] })]);
     }
     if (kind === 'canales') {
       const bytes = transfers * 8 * c;
       return mkx('Una memoria ' + name + ' transfiere ' + bytes + ' bytes y la memoria demora ' + t + ' ns. ¿Cuántos canales se están usando?',
-        [F('r', 'Canales', c, '', [mtsTxt + '.', 'Transferencias = ' + t + ' × ' + pair.mts + ' ÷ 1000 = ' + transfers + '.', 'Bytes por transferencia = ' + bytes + ' ÷ ' + transfers + ' = ' + bytes / transfers + ' B = 8 × canales ⇒ canales = ' + c + '.'])]);
+        [F('r', 'Canales', c, '', [mtsTxt + '.', 'Transferencias = ' + t + ' × ' + pair.mts + ' ÷ 1000 = ' + transfers + '.', 'Bytes por transferencia = ' + bytes + ' ÷ ' + transfers + ' = ' + bytes / transfers + ' B = 8 × canales ⇒ canales = ' + c + '.'], { fxIds: ['d1b', 'inv1'] })]);
     }
     if (kind === 'freq') {
       for (let k = 0; k < 200; k++) {
         const f = pick([1.5, 2, 2.5, 3, 4, 5]), cycles = pick([15, 20, 30, 40, 45, 60, 75, 90]); const ns = cycles / f;
         if (Math.abs(ns * 1000 - Math.round(ns * 1000)) > 1e-9) continue;
-        return mkx('Un procesador tarda ' + fmt(ns) + ' ns en ejecutar ' + cycles + ' ciclos de reloj. ¿Cuál es su frecuencia (en GHz)?', [F('r', 'f (GHz)', f, 'GHz', ['t = ciclos ÷ f  ⇒  f = ciclos ÷ t.', 'f = ' + cycles + ' ÷ ' + fmt(ns) + ' ns = ' + f + ' GHz.'], { exact: false })]);
+        return mkx('Un procesador tarda ' + fmt(ns) + ' ns en ejecutar ' + cycles + ' ciclos de reloj. ¿Cuál es su frecuencia (en GHz)?', [F('r', 'f (GHz)', f, 'GHz', ['t = ciclos ÷ f  ⇒  f = ciclos ÷ t.', 'f = ' + cycles + ' ÷ ' + fmt(ns) + ' ns = ' + f + ' GHz.'], { exact: false, fxIds: ['inv2', 'a'] })]);
       }
     }
     if (kind === 'ciclos') {
       const f = pick([1.5, 2, 2.5, 3, 4]), cycles = pick([10, 15, 20, 30, 40, 60]); const ns = cycles / f;
-      if (Math.abs(ns * 1000 - Math.round(ns * 1000)) < 1e-9) return mkx('Un procesador de ' + f + ' GHz emplea ' + fmt(ns) + ' ns en captar y decodificar una instrucción. ¿Cuántos ciclos de reloj son?', [F('r', 'Ciclos', cycles, 'ciclos', ['t = ciclos ÷ f  ⇒  ciclos = t × f.', 'ciclos = ' + fmt(ns) + ' ns × ' + f + ' GHz = ' + cycles + '.'])]);
+      if (Math.abs(ns * 1000 - Math.round(ns * 1000)) < 1e-9) return mkx('Un procesador de ' + f + ' GHz emplea ' + fmt(ns) + ' ns en captar y decodificar una instrucción. ¿Cuántos ciclos de reloj son?', [F('r', 'Ciclos', cycles, 'ciclos', ['t = ciclos ÷ f  ⇒  ciclos = t × f.', 'ciclos = ' + fmt(ns) + ' ns × ' + f + ' GHz = ' + cycles + '.'], { fxIds: ['inv2', 'a'] })]);
     }
     // mts (default / fallback)
     return mkx('Una memoria transfiere ' + transfers + ' datos (transferencias) en ' + t + ' ns. ¿Cuántas MT/s tiene y cuál es su notación DDR?',
-      [F('r', 'MT/s', pair.mts, 'MT/s', ['t = transferencias ÷ MT/s  ⇒  MT/s = transferencias ÷ t.', 'MT/s = ' + transfers + ' ÷ ' + t + ' ns × 1000 = ' + pair.mts + '.']),
-        { key: 'n', label: 'Notación DDR', kind: 'text', answer: ddrName(pair.gen, pair.mts), unit: '', steps: ['Con ' + pair.mts + ' MT/s la memoria es ' + ddrName(pair.gen, pair.mts) + ' (≡ ' + pcName(pair.gen, pair.mbps) + ').'] }]);
+      [F('r', 'MT/s', pair.mts, 'MT/s', ['t = transferencias ÷ MT/s  ⇒  MT/s = transferencias ÷ t.', 'MT/s = ' + transfers + ' ÷ ' + t + ' ns × 1000 = ' + pair.mts + '.'], { fxIds: ['inv2', 'd1b'] }),
+        { key: 'n', label: 'Notación DDR', kind: 'text', answer: ddrName(pair.gen, pair.mts), unit: '', fxIds: ['e'], steps: ['Con ' + pair.mts + ' MT/s la memoria es ' + ddrName(pair.gen, pair.mts) + ' (≡ ' + pcName(pair.gen, pair.mbps) + ').'] }]);
   }
 
   function exCmp() {
@@ -249,7 +243,7 @@
       const dA = A.c + '× ' + ddrName(A.pair.gen, A.pair.mts) + ' en ' + CH_NAME[A.c], dB = B.c + '× ' + ddrName(B.pair.gen, B.pair.mts) + ' en ' + CH_NAME[B.c];
       const better = tA < tB ? 0 : 1;
       return { id: ++uid, cat: 'ddrcmp', type: 'mcq', title: 'Comparar configuraciones', prompt: 'Hay que transferir ' + bytes + ' bytes. ¿Qué configuración de memoria lo hace en MENOS tiempo?\nA: ' + dA + '\nB: ' + dB,
-        opts: ['La A', 'La B', 'Tardan lo mismo'], ans: better,
+        opts: ['La A', 'La B', 'Tardan lo mismo'], ans: better, fxIds: ['b1', 'b2', 'd1b'],
         why: 'A: ' + bytes + ' ÷ ' + 8 * A.c + ' = ' + bytes / (8 * A.c) + ' transferencias ÷ ' + A.pair.mts + ' MT/s = ' + fmt(tA) + ' ns.   B: ' + bytes + ' ÷ ' + 8 * B.c + ' = ' + bytes / (8 * B.c) + ' transferencias ÷ ' + B.pair.mts + ' MT/s = ' + fmt(tB) + ' ns.' };
     }
     return exCmp();
@@ -280,8 +274,11 @@
     return { id: ++uid, cat: 'ddrteo', type: 'mcq', title: 'Teoría de memoria', prompt: q[0], opts: order.map(o => o.t), ans: order.findIndex(o => o.i === 0), why: q[2] };
   }
 
+  const CONV_FX = [['e'], ['e'], ['c1', 'c2'], ['c1b', 'c2'], ['c1b'], ['e2'], ['T'], ['conv'], ['a'], ['b1'], ['bw'], ['d2', 'c2'], ['inv2'], ['d1b'], ['bw'], ['b2']];
+  function exConv() { const i = Math.floor(Math.random() * CONV.length); const e = CONV[i](); e.fields[0].fxIds = CONV_FX[i]; return e; }
+
   const MAKERS = {
-    ddrconv: () => pick(CONV)(),
+    ddrconv: exConv,
     ddr: () => exProblem([pick(['a', 'b', 'c', 'd', 'e', 'f'])], 'Una parte de la pregunta 2', 'ddr'),
     ddrfull: () => exProblem(['a', 'b', 'c', 'd', 'e', 'f'], 'Pregunta 2 completa', 'ddrfull'),
     ddrinv: exInv, ddrcmp: exCmp, ddrteo: exTeo
