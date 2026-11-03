@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arquitectura de Computadoras — Ensamblador y memoria</title>
+  <meta name="description" content="Estudio interactivo de ensamblador (sector de arranque 8086) con simulador paso a paso y ejercicios, basado en las pruebas anteriores.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="side" id="side">
+      <div class="brand">Ensamblador<small>Arquitectura de Computadoras · preguntas 2 y 3</small></div>
+      <nav class="nav" id="nav" aria-label="Secciones"></nav>
+      <div class="foot">
+        <div id="progress" class="small"></div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn sm" id="theme" type="button">◐ Tema: auto</button>
+          <button class="btn sm" id="reset" type="button">Borrar progreso</button>
+        </div>
+      </div>
+    </aside>
+    <div>
+      <button class="menu-btn" id="menu" type="button" aria-label="Abrir menú">☰ Menú</button>
+      <main class="main" id="view"></main>
+    </div>
+  </div>
+  <noscript><p style="padding:20px">Esta página necesita JavaScript.</p></noscript>
+  <script src="emu.js"></script>
+  <script src="programs.js"></script>
+  <script src="content.js"></script>
+  <script src="exercises.js"></script>
+  <script src="ddr.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
