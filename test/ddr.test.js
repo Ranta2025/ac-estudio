@@ -39,9 +39,26 @@ t('checkField: numeric tolerance, comma decimals, units, text', () => {
 });
 t('generators x2000: well-formed, answers self-consistent, steps present', () => {
   for (const k of Object.keys(DDR.MAKERS)) for (let i = 0; i < 2000; i++) {
-    const e = DDR.MAKERS[k](); assert.ok(e.fields.length >= 1); assert.ok(e.prompt);
+    const e = DDR.MAKERS[k](); assert.ok(e.prompt);
+    if (e.type === 'mcq') { assert.ok(e.ans >= 0 && e.ans < e.opts.length && e.why); assert.strictEqual(new Set(e.opts).size, e.opts.length, 'duplicate options'); continue; }
+    assert.ok(e.fields.length >= 1);
     for (const f of e.fields) { assert.ok(f.steps && f.steps.length, 'no steps'); assert.ok(DDR.checkField(f, f.kind === 'text' ? f.answer : String(f.answer)), 'own answer rejected: ' + JSON.stringify(f)); assert.ok(Number.isFinite(f.answer) || f.kind === 'text'); }
     if (e.p) { const s = DDR.solve(e.p); assert.ok(s.transfers >= 1 && s.totalNs > 0); }
+  }
+});
+t('inverse problems: answers recomputed independently', () => {
+  for (let i = 0; i < 1500; i++) {
+    const e = DDR.MAKERS.ddrinv(); const f = e.fields[0];
+    const m = /(\d+) ns/.exec(e.prompt); const mem = /(DDR\d?-\d+|PC\d?-\d+)/.exec(e.prompt);
+    if (f.key === 'r' && f.label === 'Bytes') { const c = DDR.CH_NAME && Object.entries(DDR.CH_NAME).find(([, v]) => e.prompt.includes(v))[0]; const mm = DDR.parseMem(mem[1]); assert.strictEqual(f.answer, (+m[1]) * mm.mts / 1000 * 8 * (+c)); }
+    if (f.label === 'Canales') { const mm = DDR.parseMem(mem[1]); const bytes = +/transfiere (\d+) bytes/.exec(e.prompt)[1]; assert.strictEqual(f.answer, bytes / (8 * (+m[1]) * mm.mts / 1000)); }
+  }
+});
+t('comparison: the marked-best configuration really is faster', () => {
+  for (let i = 0; i < 1500; i++) {
+    const e = DDR.MAKERS.ddrcmp(); const mm = /A: (\d)× (DDR\d?-\d+) .*\nB: (\d)× (DDR\d?-\d+)/.exec(e.prompt); const bytes = +/transferir (\d+) bytes/.exec(e.prompt)[1];
+    const tA = bytes / (8 * +mm[1]) / DDR.parseMem(mm[2]).mts, tB = bytes / (8 * +mm[3]) / DDR.parseMem(mm[4]).mts;
+    assert.strictEqual(e.ans, tA < tB ? 0 : 1); assert.notStrictEqual(tA, tB);
   }
 });
 t('statement mirrors the exam wording', () => {
