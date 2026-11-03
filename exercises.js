@@ -59,7 +59,9 @@
     body.push('mov [di], al', advance, '@@:', 'inc si');
     const source = [...HEAD, 'mov si, num1', 'mov di, ' + dstStart, 'mov cx, ' + n, 'ciclo:', '', ...body, 'loop ciclo', ...TAIL,
       'num1 db ' + fmtList(data), 'num2 db ' + n + ' dup (' + fill + ')', ...END].join('\n');
-    return { source, flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: ['num2'], ptr: [{ reg: 'si', label: 'num1' }, { reg: 'di', label: 'num2' }], family: useCmp ? 'Filtro con CMP' : 'Filtro por paridad', hint: useCmp ? "Recuerda: «cmp al,K» compara AL con K y el salto (" + jop + ") se TOMA cuando AL " + ({ ja: '>', jae: '≥', jb: '<', jbe: '≤' })[jop] + ' ' + K + ' ⇒ ese elemento NO se guarda.' : "«" + pre[0] + "» deja ZF=1 si el número es PAR. " + jop + ' salta (no guarda) con los ' + (jop === 'jz' ? 'PARES' : 'IMPARES') + '.' };
+    const keep = useCmp ? ({ ja: 'menores o iguales que ' + K, jae: 'menores que ' + K, jb: 'mayores o iguales que ' + K, jbe: 'mayores que ' + K })[jop] : (jop === 'jz' ? 'IMPARES' : 'PARES');
+    const goal = 'Guardar en num2 los elementos de num1 que sean ' + keep + ', ' + (dir === 'fwd' ? 'desde el principio de num2' : 'empezando por el final de num2 y hacia atrás') + (step === 1 ? ' (posiciones consecutivas).' : ' (de ' + step + ' en ' + step + ' posiciones).');
+    return { source, goal, flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: ['num2'], ptr: [{ reg: 'si', label: 'num1' }, { reg: 'di', label: 'num2' }], family: useCmp ? 'Filtro con CMP' : 'Filtro por paridad', hint: useCmp ? "Recuerda: «cmp al,K» compara AL con K y el salto (" + jop + ") se TOMA cuando AL " + ({ ja: '>', jae: '≥', jb: '<', jbe: '≤' })[jop] + ' ' + K + ' ⇒ ese elemento NO se guarda.' : "«" + pre[0] + "» deja ZF=1 si el número es PAR. " + jop + ' salta (no guarda) con los ' + (jop === 'jz' ? 'PARES' : 'IMPARES') + '.' };
   }
 
   function genTwoArrays() {
@@ -73,7 +75,8 @@
     const source = [...HEAD, 'mov si, num1', 'mov di, num2', 'mov bx, num3', 'mov cx, ' + n, 'ciclo:', '', 'mov al, [si]', ...pre, jop + ' @f',
       'mov [di], al', 'add di, 2', 'jmp sgte', '@@:', 'mov [bx], al', 'add bx, 2', 'sgte:', 'inc si', 'loop ciclo', ...TAIL,
       'num1 db ' + fmtList(data), 'num2 db ' + n + ' dup (' + f1 + ')', 'num3 db ' + n + ' dup (' + f2 + ')', ...END].join('\n');
-    return { source, flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: ['num2', 'num3'], ptr: [{ reg: 'si', label: 'num1' }, { reg: 'di', label: 'num2' }, { reg: 'bx', label: 'num3' }], family: 'Dos arreglos destino', hint: 'Si el salto (' + jop + ') NO se toma, el elemento va a num2 (DI); si se toma, va a num3 (BX). Cada uno avanza de 2 en 2.' };
+    const keep2 = useCmp ? ({ ja: 'menores o iguales que ' + K, jae: 'menores que ' + K, jb: 'mayores o iguales que ' + K, jbe: 'mayores que ' + K })[jop] : (jop === 'jz' ? 'IMPARES' : 'PARES');
+    return { source, goal: 'Los elementos de num1 que sean ' + keep2 + ' van a num2 y los demás a num3. Los dos arreglos avanzan de 2 en 2.', flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: ['num2', 'num3'], ptr: [{ reg: 'si', label: 'num1' }, { reg: 'di', label: 'num2' }, { reg: 'bx', label: 'num3' }], family: 'Dos arreglos destino', hint: 'Si el salto (' + jop + ') NO se toma, el elemento va a num2 (DI); si se toma, va a num3 (BX). Cada uno avanza de 2 en 2.' };
   }
 
   const CLS = { upper: ['A', 'Z'], lower: ['a', 'z'], digit: ['0', '9'] };
@@ -94,7 +97,8 @@
     const source = [...HEAD, 'mov si, cadena', 'mov di, ' + start, 'mov cx, ' + n, 'ciclo:', '', 'mov al, [si]', "cmp al, '" + lo + "'", 'jb @f', "cmp al, '" + hi + "'", 'ja @f', ...store, '@@:', ...tail, 'loop ciclo', ...TAIL,
       "cadena db '" + s + "'", "cadena2 db '" + s2 + "'", ...END].join('\n');
     const other = pick(others); const [lo2, hi2] = CLS[other];
-    return { source, replacements: [["cmp al, '" + lo + "'", "cmp al, '" + lo2 + "'"], ["cmp al, '" + hi + "'", "cmp al, '" + hi2 + "'"]], flipLabel: "'" + lo + "' y '" + hi + "'  →  '" + lo2 + "' y '" + hi2 + "'", ask: ['cadena2'], text: true, ptr: [{ reg: 'si', label: 'cadena' }, { reg: 'di', label: 'cadena2' }], family: 'Filtro de caracteres (' + clsName[cls] + ')', hint: "Los dos CMP forman un rango: lo que sea menor que '" + lo + "' o mayor que '" + hi + "' salta y se descarta. Los códigos ASCII: '0'=30h, 'A'=41h, 'a'=61h." + (mode === 'compact' ? ' DI avanza SOLO cuando se guarda (los guardados quedan consecutivos).' : mode === 'posfwd' ? ' DI avanza en TODAS las vueltas: cada carácter conserva su posición.' : ' DI retrocede en TODAS las vueltas: el resultado queda al revés.') };
+    const goalC = 'Copiar de cadena a cadena2 solo los caracteres ' + clsName[cls] + (mode === 'compact' ? ', uno tras otro (consecutivos) desde el principio de cadena2.' : mode === 'posfwd' ? ', cada uno en la MISMA posición que ocupa en cadena.' : ', cada uno en la posición espejo (cadena2 se recorre de atrás hacia adelante).');
+    return { source, goal: goalC, replacements: [["cmp al, '" + lo + "'", "cmp al, '" + lo2 + "'"], ["cmp al, '" + hi + "'", "cmp al, '" + hi2 + "'"]], flipLabel: "'" + lo + "' y '" + hi + "'  →  '" + lo2 + "' y '" + hi2 + "'", ask: ['cadena2'], text: true, ptr: [{ reg: 'si', label: 'cadena' }, { reg: 'di', label: 'cadena2' }], family: 'Filtro de caracteres (' + clsName[cls] + ')', hint: "Los dos CMP forman un rango: lo que sea menor que '" + lo + "' o mayor que '" + hi + "' salta y se descarta. Los códigos ASCII: '0'=30h, 'A'=41h, 'a'=61h." + (mode === 'compact' ? ' DI avanza SOLO cuando se guarda (los guardados quedan consecutivos).' : mode === 'posfwd' ? ' DI avanza en TODAS las vueltas: cada carácter conserva su posición.' : ' DI retrocede en TODAS las vueltas: el resultado queda al revés.') };
   }
 
   function genStride() {
@@ -108,7 +112,8 @@
     if (!useTest) body.push('mov al, [si]');
     body.push('mov [di], al', 'inc di', '@@:', (dir === 'bwd' ? 'sub si, ' : 'add si, ') + k);
     const source = [...HEAD, ...setup, 'ciclo:', '', ...body, 'loop ciclo', ...TAIL, 'num1 db ' + fmtList(data), 'num2 db ' + c + ' dup (' + fill + ')', ...END].join('\n');
-    return { source, flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: ['num2'], ptr: [{ reg: 'si', label: 'num1' }, { reg: 'di', label: 'num2' }], family: 'Recorrido de ' + k + ' en ' + k, hint: 'SI no avanza de 1 en 1 sino de ' + k + ' en ' + k + (dir === 'bwd' ? ', empezando por el ÚLTIMO elemento' : '') + '. Solo se leen ' + c + ' elementos (CX = ' + c + ').' };
+    const goalS = 'Recorrer num1 de ' + k + ' en ' + k + (dir === 'bwd' ? ' desde el ÚLTIMO elemento hacia atrás' : ' desde el primero hacia adelante') + ' y guardar en num2 (consecutivos) los elementos ' + (jop === 'jz' ? 'IMPARES' : 'PARES') + '.';
+    return { source, goal: goalS, flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: ['num2'], ptr: [{ reg: 'si', label: 'num1' }, { reg: 'di', label: 'num2' }], family: 'Recorrido de ' + k + ' en ' + k, hint: 'SI no avanza de 1 en 1 sino de ' + k + ' en ' + k + (dir === 'bwd' ? ', empezando por el ÚLTIMO elemento' : '') + '. Solo se leen ' + c + ' elementos (CX = ' + c + ').' };
   }
 
   function genUpper() {
@@ -118,7 +123,7 @@
     let s2 = ''; for (let i = 0; i < n; i++) s2 += '.';
     const source = [...HEAD, 'mov si, cadena', 'mov di, cadena2', 'mov cx, ' + n, 'ciclo:', '', 'mov al, [si]', "cmp al, 'a'", 'jb @f', "cmp al, 'z'", 'ja @f', 'sub al, 20h', '@@:', 'mov [di], al', 'inc si', 'inc di', 'loop ciclo', ...TAIL,
       "cadena db '" + s + "'", "cadena2 db '" + s2 + "'", ...END].join('\n');
-    return { source, replacements: [["cmp al, 'a'", "cmp al, 'A'"], ["cmp al, 'z'", "cmp al, 'Z'"], ['sub al, 20h', 'add al, 20h']], flipLabel: "'a','z' y sub al,20h  →  'A','Z' y add al,20h", ask: ['cadena2'], text: true, ptr: [{ reg: 'si', label: 'cadena' }, { reg: 'di', label: 'cadena2' }], family: 'Extra: convertir a mayúsculas', hint: "Una minúscula se convierte en mayúscula restando 20h ('a'=61h → 'A'=41h). Aquí TODOS los caracteres se copian; solo cambian las minúsculas." };
+    return { source, goal: 'Copiar cadena a cadena2 convirtiendo las letras minúsculas en mayúsculas.', replacements: [["cmp al, 'a'", "cmp al, 'A'"], ["cmp al, 'z'", "cmp al, 'Z'"], ['sub al, 20h', 'add al, 20h']], flipLabel: "'a','z' y sub al,20h  →  'A','Z' y add al,20h", ask: ['cadena2'], text: true, ptr: [{ reg: 'si', label: 'cadena' }, { reg: 'di', label: 'cadena2' }], family: 'Extra: convertir a mayúsculas', hint: "Una minúscula se convierte en mayúscula restando 20h ('a'=61h → 'A'=41h). Aquí TODOS los caracteres se copian; solo cambian las minúsculas." };
   }
 
   function genAccum() {
@@ -129,7 +134,7 @@
       const sum = data.filter(v => !taken(v)).reduce((s, v) => s + v, 0);
       if (sum > 255 || sum === 0) continue;
       const source = [...HEAD, 'mov si, num1', 'mov cx, ' + n, 'mov bl, 0', 'mov dl, 0', 'ciclo:', '', 'mov al, [si]', 'cmp al, ' + K, jop + ' @f', 'add bl, al', 'inc dl', '@@:', 'inc si', 'loop ciclo', ...TAIL, 'num1 db ' + fmtList(data), ...END].join('\n');
-      return { source, flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: [], regs: ['BL', 'DL'], ptr: [{ reg: 'si', label: 'num1' }], family: 'Extra: suma y cuenta en registros', hint: 'BL acumula la SUMA de los elementos que NO saltan y DL cuenta cuántos son. No se usa memoria destino.' };
+      return { source, goal: 'Dejar en BL la suma de los elementos que NO superan el salto y en DL cuántos son.', flip: jop + ' @f', flipTo: INV[jop] + ' @f', ask: [], regs: ['BL', 'DL'], ptr: [{ reg: 'si', label: 'num1' }], family: 'Extra: suma y cuenta en registros', hint: 'BL acumula la SUMA de los elementos que NO saltan y DL cuenta cuántos son. No se usa memoria destino.' };
     }
     return genAccum();
   }
@@ -374,6 +379,6 @@
     return { ok: user.length === expected.length && cells.every(Boolean), cells };
   }
 
-  const Ex = { make, makeSimulacro, genProgram, parseIn, parseList, checkList, exInstr, exConcept, MAKERS, pick, shuffle, ri };
+  const Ex = { make, makeSimulacro, genProgram, runProg, writesInside, results, variantSource, HEAD, TAIL, END, INV, TAKEN, titlePool, exJump, exInstr, exCount, exTrace, parseIn, parseList, checkList, exInstr, exConcept, MAKERS, pick, shuffle, ri };
   if (isNode) module.exports = Ex; else root.Ex = Ex;
 })(typeof window !== 'undefined' ? window : globalThis);
