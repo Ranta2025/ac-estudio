@@ -187,14 +187,11 @@
         ['3 memorias, triple canal', 'Tres módulos trabajando en paralelo. Cada uno mueve 8 bytes por transferencia ⇒ 24 bytes a la vez.', 'b)'],
         ['576 bytes', 'Cantidad de datos que la instrucción debe transferir.', 'b) y d)']].map(r => h('tr', null, r.map((c, i) => h('td', null, i === 0 ? h('code', null, c) : c)))))))),
       h('h2', null, 'Hoja de fórmulas (la que debes memorizar)'),
-      card(h('div', { class: 'tscroll' }, h('table', null, h('thead', null, h('tr', null, ['', 'Fórmula', 'Unidades', 'Ojo'].map(t => h('th', null, t)))), h('tbody', null, [
-        ['a)', 't_captación = ciclos ÷ f_CPU', 'ciclos ÷ GHz = ns', 'Con GHz el resultado sale directo en ns.'],
-        ['b)', 'transferencias = bytes ÷ (8 × canales)', 'sin unidad', 'Si no es entero, se redondea hacia ARRIBA.'],
-        ['c)', 'f_bus = MT/s ÷ 2', 'MHz', 'DDR transfiere 2 veces por ciclo. Si te dan PC: MT/s = MB/s ÷ 8.'],
-        ['d)', 't_memoria = transferencias ÷ MT/s', 'transf ÷ (millones/s) = µs → ×1000 = ns', 'Equivale a: ciclos de bus (transf ÷ 2) × período del bus.'],
-        ['e)', 'PCn-X ↔ DDRn-(X ÷ 8)', 'X en MB/s, Y en MT/s', 'Al revés: DDRn-Y ↔ PCn-(Y × 8).'],
-        ['f)', 't_total = t_captación + t_memoria', 'ns', 'Es a) + d).']].map(r => h('tr', null, r.map((c, i) => h('td', null, i === 0 ? h('b', null, c) : (i === 1 ? h('code', null, c) : c)))))))),
-        callout('good', h('b', null, 'Truco de comprobación: '), 'el tiempo de memoria también sale de t = bytes ÷ ancho de banda. Con 3 × PC3-12800 = 38 400 MB/s = 38.4 B/ns ⇒ 576 ÷ 38.4 = 15 ns. Si tus dos métodos coinciden, está bien.')),
+      callout('', 'Están escritas con la notación habitual de arquitectura de computadoras: ', h('b', null, 'T = 1/f'), ' (período y frecuencia), ', h('b', null, 't = ciclos × T = ciclos / f'), ' (tiempo de CPU), ⌈ ⌉ para redondear hacia arriba, y los subíndices ', h('i', null, 'CPU, bus, mem, tr, ef'), ' para no mezclar magnitudes. Debajo de cada fórmula, qué significa cada símbolo.'),
+      ...formulaSheet(),
+      callout('good', h('b', null, 'Truco de comprobación: '), 'el tiempo de memoria también sale de t = D ÷ BW. Con 3 × PC3-12800: BW = 3 × 12 800 = 38 400 MB/s = 38.4 B/ns ⇒ 576 ÷ 38.4 = 15 ns. Si tus dos métodos coinciden, está bien.'),
+      h('h2', null, 'Símbolos y unidades'),
+      card(symbolsTable()),
       h('h2', null, 'Glosario: qué es cada cosa'),
       h('div', { class: 'grid2' },
         card(h('dl', { style: 'margin:0' }, ...[
@@ -202,7 +199,7 @@
           ['Ciclo de reloj', 'La unidad de tiempo del procesador (o del bus). Las instrucciones se miden en ciclos.']].flatMap(([t, d]) => [h('dt', { style: 'font-weight:700;margin-top:8px' }, t), h('dd', { style: 'margin:0 0 0 0' }, d)]))),
         card(h('dl', { style: 'margin:0' }, ...[
           ['Transferencia', 'Un movimiento de datos por el bus: 64 bits = 8 bytes por módulo.'], ['MT/s', 'Mega-transferencias por segundo: velocidad EFECTIVA de la memoria (el número de DDR3-1600).'], ['Canal', 'Un camino de 64 bits hacia la memoria. Doble canal = 2 módulos a la vez (16 B por transferencia).'],
-          ['DDR', 'Double Data Rate: dos transferencias por ciclo de reloj (flanco de subida y de bajada).'], ['Frecuencia del bus', 'El reloj real del bus de memoria = MT/s ÷ 2. (DDR3-1600 → 800 MHz).']].flatMap(([t, d]) => [h('dt', { style: 'font-weight:700;margin-top:8px' }, t), h('dd', { style: 'margin:0' }, d)])))),
+          ['DDR', 'Double Data Rate: dos transferencias por ciclo de reloj (flanco de subida y de bajada).'], ['Frecuencia del bus', 'El reloj real del bus de memoria = MT/s ÷ 2. (DDR3-1600 → 800 MHz).'], ['Los 3 «relojes» de una DDR', 'Reloj interno del chip (200 MHz en DDR3-1600), reloj del bus (800 MHz) y velocidad efectiva (1600 MT/s). En la prueba solo se usan los dos últimos: f_bus = MT/s ÷ 2.']].flatMap(([t, d]) => [h('dt', { style: 'font-weight:700;margin-top:8px' }, t), h('dd', { style: 'margin:0' }, d)])))),
       h('h2', null, 'Cómo se lee el nombre de una memoria'),
       h('div', { class: 'grid2', style: 'align-items:start' },
         card(h('h3', null, 'Decodificador'), memDecoder()),
@@ -241,6 +238,15 @@
       callout('', 'Empieza por la «Pregunta 2 completa» en una serie de 10: así comprobarás si te sale sin mirar la hoja de fórmulas. Cada ejercicio muestra el desarrollo paso a paso al corregir.')));
   }
 
+  function fxEl(math) { return h('div', { class: 'fx', html: math }); }
+  function formulaSheet() {
+    return window.Fx.SHEET.map(g => card(h('h3', null, g.title), g.items.map(it => h('div', { style: 'margin:10px 0 14px' }, fxEl(it.math), h('p', { class: 'small muted', style: 'margin:2px 0 0' }, h('b', null, 'Donde: '), it.donde)))));
+  }
+  function symbolsTable() {
+    return h('div', { class: 'tscroll' }, h('table', null, h('thead', null, h('tr', null, ['Símbolo', 'Significado', 'Unidad', 'Apartado'].map(t => h('th', null, t)))),
+      h('tbody', null, window.Fx.SYMBOLS.map(r => h('tr', null, h('td', { class: 'fx' , html: '<math>' + r[0] + '</math>' }), h('td', null, r[1]), h('td', null, r[2]), h('td', null, r[3]))))));
+  }
+
   function memDecoder() {
     const D = window.DDR; const wrap = h('div'); const out = h('div', { style: 'margin-top:10px' });
     const inp = h('input', { type: 'text', value: 'PC5-48000', 'aria-label': 'Nombre de la memoria', placeholder: 'DDR4-3200 o PC4-25600', style: 'width:180px' });
@@ -259,7 +265,8 @@
 
   function stepsView(p) {
     const D = window.DDR; const s = D.solve(p); const st = D.steps(p, s); const A = D.answers(p, s);
-    return h('div', null, Object.keys(D.PARTS).map(k => h('div', { style: 'margin:10px 0' }, h('div', null, h('b', null, k + ') '), D.PARTS[k]), st[k].map(t => h('div', { class: 'small', style: 'margin:2px 0 2px 14px' }, t)),
+    const FX = window.Fx.forPart(p, s);
+    return h('div', null, Object.keys(D.PARTS).map(k => h('div', { style: 'margin:14px 0' }, h('div', null, h('b', null, k + ') '), D.PARTS[k]), FX[k].map(fxEl), st[k].map(t => h('div', { class: 'small muted', style: 'margin:2px 0 2px 14px' }, t)),
       h('div', { style: 'margin:2px 0 0 14px' }, h('span', { class: 'pill-arr' }, '⇒ ' + (A[k].kind === 'text' ? A[k].answer : fmt(A[k].answer) + ' ' + A[k].unit))))),
       s.integer ? null : callout('warn', 'Sin redondear: ' + fmt(s.exact) + ' transferencias → d) ' + fmt(s.memNsExact) + ' ns y f) ' + fmt(s.totalNsExact) + ' ns. Redondeando hacia arriba (' + s.transfers + '): d) ' + fmt(s.memNs) + ' ns y f) ' + fmt(s.totalNs) + ' ns.'));
   }

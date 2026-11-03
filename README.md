@@ -21,7 +21,8 @@ Las respuestas de los ejercicios no están escritas a mano: salen de ejecutar el
 | --- | --- |
 | `emu.js` | Ensamblador + emulador 8086 (banderas, saltos, `loop`, `db/dw/dup/times`, `@@/@f/@b`) |
 | `programs.js` | Los 6 programas de la pregunta 3 con sus líneas subrayadas y variantes del apartado d) |
-| `ddr.js` | Motor de la pregunta 2 (fórmulas, pasos, generadores) |
+| `ddr.js` | Motor de la pregunta 2 (cálculo, explicaciones, generadores) |
+| `formulas.js` | Fórmulas de la pregunta 2 en notación matemática real (MathML): hoja de fórmulas, símbolos y unidades, y el desarrollo con los valores sustituidos |
 | `content.js` | Contenido didáctico, banco de preguntas y de verdadero/falso |
 | `exercises.js`, `exercises2.js` | Generadores de ejercicios de la pregunta 3 (filtros, traceo, completado, banderas, direcciones) |
 | `ui.js`, `app.js`, `style.css`, `index.html` | Interfaz |
@@ -31,6 +32,7 @@ Las respuestas de los ejercicios no están escritas a mano: salen de ejecutar el
 ```sh
 node test/emu.test.js
 node test/ddr.test.js
+node test/formulas.test.js
 node test/exercises.test.js
 node test/exercises2.test.js
 ```

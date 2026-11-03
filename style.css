@@ -166,3 +166,11 @@ input.ok { border-color: var(--good); background: var(--good-soft); } input.no {
 .grp.q2, .gtag.q2 { background: var(--warn-soft); color: var(--warn); }
 .grp.q3, .gtag.q3 { background: var(--accent-soft); color: var(--accent); }
 .gtag { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: .78rem; font-weight: 700; margin-bottom: 6px; }
+
+/* typeset formulas (MathML) */
+.fx { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.fx math { font-size: 1.22em; }
+.fx math[display="block"] { display: block math; text-align: left; margin: .15em 0; }
+.fxrow { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+.fxrow > b { min-width: 2em; }
+td.fx { overflow: visible; }

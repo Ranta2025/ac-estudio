@@ -277,7 +277,7 @@
           const ok = i === ex.ans;
           [...opts.children].forEach((c, j) => { c.disabled = true; if (j === ex.ans) c.classList.add('ok'); else if (j === i) c.classList.add('no'); });
           record(ok);
-          feedback(ok, ok ? ex.why : 'La respuesta correcta es la ' + LET[ex.ans] + '. ' + ex.why, h('div', { class: 'row', style: 'margin-top:8px' }, solutionBar(ex.runSource, 'Ejercicio')));
+          feedback(ok, ok ? ex.why : 'La respuesta correcta es la ' + LET[ex.ans] + '. ' + ex.why, h('div', null, (root.Fx && ex.fxIds) ? ex.fxIds.map(id => root.Fx.byId(id)).filter(Boolean).map(it => h('div', null, h('div', { class: 'fx', html: it.math }), h('div', { class: 'small muted' }, it.donde))) : null, h('div', { class: 'row', style: 'margin-top:8px' }, solutionBar(ex.runSource, 'Ejercicio'))));
         } }, h('span', { class: 'l' }, LET[i] + ')'), h('span', null, t));
         opts.append(b);
       });
@@ -329,14 +329,15 @@
         let all = true; const blocks = [];
         ex.fields.forEach(f => {
           const ok = DDR.checkField(f, inputs[f.key].value); inputs[f.key].classList.toggle('ok', ok); inputs[f.key].classList.toggle('no', !ok); all = all && ok;
-          blocks.push(h('details', { open: ok ? null : true }, h('summary', null, (ok ? '✔ ' : '✘ ') + f.label + ' ' + (f.display != null ? f.display : f.kind === 'text' ? f.answer : DDR.fmt(f.answer) + ' ' + f.unit)), h('div', { class: 'inner' }, f.steps.map(t => h('div', { style: 'margin:4px 0' }, t)))));
+          const fxl = !root.Fx ? [] : (ex.p && 'abcdef'.includes(f.key)) ? root.Fx.forPart(ex.p, DDR.solve(ex.p))[f.key].map(m => h('div', { class: 'fx', html: m })) : (f.fxIds || []).map(id => root.Fx.byId(id)).filter(Boolean).map(it => h('div', null, h('div', { class: 'fx', html: it.math }), h('div', { class: 'small muted' }, it.donde)));
+          blocks.push(h('details', { open: ok ? null : true }, h('summary', null, (ok ? '✔ ' : '✘ ') + f.label + ' ' + (f.display != null ? f.display : f.kind === 'text' ? f.answer : DDR.fmt(f.answer) + ' ' + f.unit)), h('div', { class: 'inner' }, fxl, f.steps.map(t => h('div', { class: fxl.length ? 'small muted' : '', style: 'margin:4px 0' }, t)))));
         });
         record(all);
         feedback(all, all ? 'Todo bien.' : 'Revisa las que están en rojo; abajo tienes el desarrollo.', h('div', null, blocks, ex.tip ? h('div', { class: 'callout warn' }, ex.tip) : null));
       };
       Object.values(inputs).forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') check(); }));
       actions.append(h('button', { class: 'btn primary', onclick: check }, 'Comprobar'));
-      const hb = h('div', { class: 'callout hint', hidden: true, html: 'a) t = ciclos ÷ f_CPU(GHz) → ns<br>b) transferencias = bytes ÷ (8 × canales) (si no es entero, hacia arriba)<br>c) f_bus = MT/s ÷ 2<br>d) t_mem = transferencias ÷ MT/s (µs → ×1000 = ns)<br>e) PCn-X ↔ DDRn-(X÷8)<br>f) t_total = a) + d)' });
+      const hb = h('div', { class: 'callout hint', hidden: true, html: root.Fx ? root.Fx.compact().map(([k, m]) => '<div class="fxrow"><b>' + k + '</b><span class="fx">' + m + '</span></div>').join('') + '<div class="small">b) si no sale entero, se redondea hacia arriba · d) N ÷ MT/s sale en µs → ×1000 = ns</div>' : 'a) t = ciclos / f · b) N = ⌈D / (8c)⌉ · c) f_bus = MT/s / 2 · d) t = N / MT/s · e) PCn-X ⇔ DDRn-(X/8) · f) a) + d)' });
       actions.append(h('button', { class: 'btn', onclick: () => { hb.hidden = !hb.hidden; } }, 'Fórmulas')); card.append(hb);
     } else if (ex.type === 'fill') {
       const sels = ex.slots.map((s, k) => {
