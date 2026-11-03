@@ -218,7 +218,87 @@
     { tag: 'c', q: 'Códigos ASCII que conviene saber: ¿cuál es correcto?', o: ["'0'=30h  'A'=41h  'a'=61h", "'0'=00h  'A'=0Ah  'a'=1Ah", "'0'=39h  'A'=5Ah  'a'=7Ah", "'0'=41h  'A'=61h  'a'=30h"], a: 0, w: "Dígitos 30h–39h, mayúsculas 41h–5Ah, minúsculas 61h–7Ah. Una minúscula es la mayúscula + 20h." }
   ];
 
-  const C = { explainLine, CARDS, DIRECTIVES, ANATOMY, MCQ };
+
+  /* ---------- more concept questions ---------- */
+  MCQ.push(
+    { tag: 'a', q: 'Si el programa usa «org 7C00h» y el sector mide 512 bytes, ¿en qué direcciones quedan los bytes de la firma 55h y AAh?', o: ['7DFEh y 7DFFh.', '7C00h y 7C01h.', '7DFFh y 7E00h.', '7E00h y 7E01h.'], a: 0, w: '7C00h + 510 (1FEh) = 7DFEh para el byte 55h, y 7DFFh para AAh (últimos 2 bytes del sector).' },
+    { tag: 'a', q: '¿Cuántos bytes mide el sector de arranque que lee el BIOS?', o: ['512 bytes.', '510 bytes.', '1024 bytes.', '256 bytes.'], a: 0, w: '510 bytes de código/datos/relleno + 2 bytes de firma = 512.' },
+    { tag: 'a', q: '¿Qué guarda en memoria «dw 1234h» (en este orden de bytes)?', o: ['34h y después 12h (little-endian).', '12h y después 34h.', 'Solo 12h.', 'Solo 34h.'], a: 0, w: 'El 8086 guarda primero el byte bajo. Por eso dw 0AA55h deja 55h, AAh.' },
+    { tag: 'a', q: '¿Qué pasaría si se olvida el «jmp $» al final del código?', o: ['La CPU seguiría ejecutando los datos y el relleno como si fueran instrucciones.', 'Nada: el programa termina solo.', 'El BIOS vuelve a cargar el sector.', 'El ensamblador da un error.'], a: 0, w: 'No hay sistema operativo que recupere el control: la CPU avanza por la memoria ejecutando bytes sin sentido.' },
+    { tag: 'a', q: 'En «times 510-($-$$) db 0», si el código y los datos ocupan 87 bytes, ¿cuántos ceros se escriben?', o: ['423.', '510.', '87.', '425.'], a: 0, w: '510 − 87 = 423. La firma de 2 bytes va después y completa los 512.' },
+    { tag: 'b', q: '¿Qué hace «mov di, num2+9»?', o: ['Apunta DI al décimo byte de num2 (su último elemento si tiene 10).', 'Suma 9 al contenido de num2.', 'Copia 9 en DI.', 'Apunta DI al noveno byte de num2.'], a: 0, w: 'num2+0 es el primero; num2+9 es el décimo.' },
+    { tag: 'b', q: 'Tras «test al, 1», ¿qué salto se toma con los números IMPARES?', o: ['jnz.', 'jz.', 'ja.', 'jb.'], a: 0, w: 'Impar ⇒ bit 0 = 1 ⇒ AND = 1 ⇒ ZF=0 ⇒ jnz salta.' },
+    { tag: 'b', q: '¿Qué instrucción convierte la minúscula \'a\' (61h) en la mayúscula \'A\' (41h)?', o: ['sub al, 20h', 'add al, 20h', 'and al, 1', 'inc al'], a: 0, w: 'Las minúsculas están 20h por encima de las mayúsculas, así que se resta 20h.' },
+    { tag: 'b', q: 'AL contiene el carácter \'7\' (37h). ¿Qué deja «and al, 0Fh»?', o: ['7 (el valor numérico del dígito).', '37h.', '0Fh.', '0.'], a: 0, w: '37h AND 0Fh = 07h: se quedan los 4 bits bajos. Truco para pasar de dígito ASCII a número.' },
+    { tag: 'b', q: '¿Para qué sirve la etiqueta anónima «@@:»?', o: ['Para tener un destino de salto sin inventar un nombre (se usa con @f y @b).', 'Para reservar memoria.', 'Para terminar el programa.', 'Para llamar a una función.'], a: 0, w: '@f salta al próximo @@ y @b al anterior.' },
+    { tag: 'b', q: 'Si CX vale 0 al llegar por primera vez a «loop ciclo», ¿cuántas veces se repite el ciclo?', o: ['65 536 veces (CX pasa de 0 a FFFFh).', 'Ninguna.', 'Una vez.', 'Infinitas.'], a: 0, w: 'LOOP decrementa primero: 0 − 1 = FFFFh ≠ 0 ⇒ salta. Hay que cargar CX antes de entrar al ciclo.' },
+    { tag: 'b', q: 'AL = 200 y se ejecuta «add al, 100». ¿Qué queda en AL y en CF?', o: ['AL = 44 y CF = 1.', 'AL = 300 y CF = 0.', 'AL = 44 y CF = 0.', 'AL = 255 y CF = 1.'], a: 0, w: '300 no cabe en 8 bits: 300 − 256 = 44 y se activa el acarreo (CF=1).' },
+    { tag: 'b', q: 'AL = 5 y se ejecuta «cmp al, 5». ¿Qué banderas quedan?', o: ['ZF=1 y CF=0.', 'ZF=0 y CF=1.', 'ZF=0 y CF=0.', 'ZF=1 y CF=1.'], a: 0, w: '5 − 5 = 0 ⇒ ZF=1; no hay préstamo ⇒ CF=0.' },
+    { tag: 'b', q: 'AL = 3 y se ejecuta «cmp al, 9». ¿Qué banderas quedan?', o: ['ZF=0 y CF=1.', 'ZF=1 y CF=0.', 'ZF=0 y CF=0.', 'ZF=1 y CF=1.'], a: 0, w: '3 − 9 necesita un préstamo ⇒ CF=1 (3 < 9 sin signo); no es cero ⇒ ZF=0. Por eso «jb» salta.' },
+    { tag: 'b', q: '¿Cuál es el contrario de «jbe»?', o: ['ja', 'jb', 'jae', 'jnz'], a: 0, w: 'NO(≤) = (>). Contrarios: ja↔jbe, jae↔jb, jz↔jnz.' },
+    { tag: 'c', q: 'Un ciclo tiene «mov cx, 10» y el arreglo de entrada tiene 10 elementos. ¿Qué pasa si se cambia a «mov cx, 8»?', o: ['Solo se procesan los 8 primeros elementos.', 'Se procesan los 8 últimos.', 'Se procesan los 10 igual.', 'El programa no termina.'], a: 0, w: 'CX controla las vueltas; SI avanza desde el principio, así que quedan sin leer los últimos.' },
+    { tag: 'c', q: 'En un programa con «add di, 2» tras cada «mov [di], al», ¿qué hay entre dos elementos guardados?', o: ['El valor inicial del arreglo destino (hueco).', 'Ceros siempre.', 'El elemento anterior repetido.', 'Basura aleatoria.'], a: 0, w: 'Los bytes que no se escriben conservan lo que se declaró con db/dup.' },
+    { tag: 'c', q: '¿Cuántos elementos se guardan como máximo en un arreglo de 10 bytes si DI avanza de 2 en 2?', o: ['5.', '10.', '2.', '20.'], a: 0, w: 'Posiciones 0, 2, 4, 6, 8: cinco. Más allá se escribiría fuera del arreglo.' },
+    { tag: 'c', q: 'En «cadena db \'ExAmEn\'» con el filtro \'A\'..\'Z\', ¿cuántos caracteres pasan?', o: ['3 (E, A, E).', '6.', '2.', '4.'], a: 0, w: 'Las mayúsculas son E, A y E; x, m, n son minúsculas.' },
+    { tag: 'd', q: 'En un filtro con «cmp al, 15 / jae @f», si se cambia por «jb @f», los elementos que se guardan pasan a ser…', o: ['los mayores o iguales que 15.', 'los menores que 15.', 'solo los iguales a 15.', 'ninguno.'], a: 0, w: 'jae descartaba ≥ 15 (guardaba < 15). jb descarta < 15 y guarda ≥ 15.' },
+    { tag: 'd', q: 'Si en un programa de dos arreglos se invierte el salto condicional, ¿qué ocurre?', o: ['Los destinos se intercambian: lo que iba a num2 va a num3 y viceversa.', 'Todo va a num2.', 'No cambia nada.', 'El programa no termina.'], a: 0, w: 'Ambas ramas existen; al invertir la condición cada elemento toma la rama contraria.' }
+  );
+
+  /* ---------- true / false statements ---------- */
+  const VF = [
+    ['«org 7C00h» genera 7C00h bytes de código en el programa.', false, 'ORG no genera bytes: solo informa al ensamblador de la dirección de carga.'],
+    ['«dw 0AA55h» deja en memoria primero el byte 55h y luego AAh.', true, 'Little-endian: el byte bajo va primero.'],
+    ['«test al, 1» modifica el valor de AL.', false, 'TEST solo actualiza banderas; AL no cambia.'],
+    ['«and al, 1» modifica el valor de AL.', true, 'AND guarda el resultado en el destino: AL queda en 0 ó 1.'],
+    ['«cmp al, 9» guarda el resultado de la resta en AL.', false, 'CMP resta pero descarta el resultado; solo deja banderas.'],
+    ['«loop ciclo» decrementa CX y salta si CX ≠ 0.', true, 'Es el «for» del ensamblador.'],
+    ['«jz» salta cuando ZF = 1.', true, 'jz = je: salta si el resultado fue cero / iguales.'],
+    ['«ja» salta cuando el primer valor es mayor que el segundo (sin signo).', true, 'ja: CF=0 y ZF=0.'],
+    ['«jae» y «jnb» son la misma instrucción.', true, 'Son sinónimos: salta si CF=0.'],
+    ['El contrario de «jb» es «jbe».', false, 'El contrario de jb (<) es jae (≥). El de jbe (≤) es ja (>).'],
+    ['«mov si, num1» copia en SI el primer valor del arreglo num1.', false, 'En FASM carga la DIRECCIÓN de num1; para el contenido se usa [si].'],
+    ['«mov al, [si]» copia en AL el byte cuya dirección está en SI.', true, 'Los corchetes indican «contenido de esa dirección».'],
+    ['«mov [di], [si]» es válida en el 8086.', false, 'No se puede de memoria a memoria; hay que pasar por un registro.'],
+    ['«mov ds, cs» es una instrucción válida.', false, 'No existe mov entre registros de segmento: se usa mov ax, cs / mov ds, ax.'],
+    ['«inc di» modifica la bandera CF.', false, 'INC y DEC no tocan CF.'],
+    ['«add di, 2» avanza DI dos posiciones (dos bytes).', true, 'Cada elemento ocupa 1 byte, así que salta un elemento.'],
+    ['«num2 db 10 dup (3)» reserva 10 bytes con el valor inicial 3.', true, 'DUP repite el valor entre paréntesis.'],
+    ['«times 510-($-$$) db 0» escribe siempre exactamente 510 ceros.', false, 'Escribe 510 − (bytes usados) ceros, para llegar a 510 bytes.'],
+    ['El BIOS carga el sector de arranque en la dirección 0000:7C00h.', true, 'Por eso se usa org 7C00h.'],
+    ['Si los 2 últimos bytes del sector no son 55h AAh, el BIOS ejecuta el sector igualmente.', false, 'Sin la firma, el BIOS no considera el sector arrancable.'],
+    ['«jmp $» salta a la primera instrucción del programa.', false, '«$» es la dirección de la propia instrucción: salta a sí misma.'],
+    ['«jmp $» detiene el programa mediante un bucle infinito.', true, 'Es la parada típica de un sector de arranque.'],
+    ['«@f» se refiere al próximo «@@:» hacia adelante.', true, 'f = forward (adelante).'],
+    ['«@b» salta hacia adelante.', false, '@b = backward: al @@ anterior.'],
+    ['Si AL = 15, después de «cmp al, 15» la bandera ZF vale 1.', true, '15 − 15 = 0 ⇒ ZF=1.'],
+    ['Si AL = 15, después de «cmp al, 20» la bandera CF vale 1.', true, '15 < 20 ⇒ hay préstamo ⇒ CF=1.'],
+    ['«xor al, al» deja AL en 0.', true, 'Un valor XOR sí mismo da 0.'],
+    ['CX es el registro contador que utiliza LOOP.', true, 'LOOP trabaja con CX.'],
+    ['AL es un registro de 16 bits.', false, 'AL es de 8 bits (la parte baja de AX, que es de 16).'],
+    ['AX está formado por AH (alto) y AL (bajo).', true, '16 bits = 8 + 8.'],
+    ['«sub si, 3» hace que SI apunte tres posiciones más adelante.', false, 'Resta: retrocede tres posiciones.'],
+    ['«num1+8» es la dirección del noveno elemento de num1.', true, 'num1+0 es el primero.'],
+    ['«and al, 1» da 1 cuando AL es par.', false, 'Da 1 cuando el bit 0 es 1, es decir, cuando es IMPAR.'],
+    ['Después de «test al, 1», el salto «jz» se toma con los números pares.', true, 'Par ⇒ bit 0 = 0 ⇒ resultado 0 ⇒ ZF=1.'],
+    ['El destino de un «mov» puede ser un número inmediato (por ejemplo, mov 5, al).', false, 'El destino debe ser un registro o una posición de memoria.'],
+    ['El código ASCII de \'A\' es 41h y el de \'a\' es 61h.', true, 'Diferencia de 20h.'],
+    ['Para convertir una mayúscula en minúscula se resta 20h.', false, 'Se SUMA 20h (o se activa el bit 5 con or al, 20h).'],
+    ["«format binary as 'img'» genera un ejecutable .exe.", false, 'Genera un binario plano, sin cabeceras.'],
+    ['En estas pruebas los datos (num1, num2…) se colocan después del «jmp $».', true, 'Así la CPU nunca los ejecuta.'],
+    ['«cmp» modifica las banderas pero no modifica sus operandos.', true, 'Es una resta «de mentira».'],
+    ['«ja» y «jg» son equivalentes para cualquier dato.', false, 'ja compara SIN signo; jg compara CON signo.'],
+    ['«dec di» retrocede DI un byte.', true, 'DI ← DI − 1.'],
+    ['Para que [si] acceda a los datos del sector, DS debe valer lo mismo que CS.', true, 'Datos y código comparten segmento.'],
+    ['Un salto condicional (por ejemplo jz) modifica las banderas.', false, 'Los saltos solo LEEN las banderas.'],
+    ["«mov al, 'A'» carga el valor 41h en AL.", true, "Un carácter entre comillas es su código ASCII."],
+    ['«$$» es la dirección de inicio del programa y «$» la dirección actual.', true, '$-$$ = bytes ocupados hasta ese punto.'],
+    ['Si CX = 5 al entrar a un ciclo con LOOP, el cuerpo se ejecuta 5 veces.', true, 'CX: 5→4→3→2→1→0.'],
+    ['Al terminar un ciclo controlado por LOOP, CX vale 0.', true, 'LOOP sale cuando CX llega a 0.'],
+    ['«mov cx, 10» después de «ciclo:» reinicia el contador en cada vuelta.', false, 'Estaría dentro del ciclo y nunca terminaría; el contador se carga ANTES de la etiqueta.'],
+    ['«add al, 100» con AL = 200 deja AL = 44 y CF = 1.', true, '300 − 256 = 44 con acarreo.']
+  ];
+
+  const C = { explainLine, CARDS, DIRECTIVES, ANATOMY, MCQ, VF };
   if (typeof module !== 'undefined' && module.exports) module.exports = C;
   else root.Content = C;
 })(typeof window !== 'undefined' ? window : globalThis);
