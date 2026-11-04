@@ -6,6 +6,7 @@
 
   const REG8 = { al: [0, 0], cl: [1, 0], dl: [2, 0], bl: [3, 0], ah: [0, 1], ch: [1, 1], dh: [2, 1], bh: [3, 1] };
   const REG16 = { ax: 0, cx: 1, dx: 2, bx: 3, sp: 4, bp: 5, si: 6, di: 7 };
+  const REG32 = { eax: 0, ecx: 1, edx: 2, ebx: 3, esp: 4, ebp: 5, esi: 6, edi: 7 };
   const SREG = { es: 0, cs: 1, ss: 2, ds: 3 };
   const R16N = ['AX', 'CX', 'DX', 'BX', 'SP', 'BP', 'SI', 'DI'];
   const SN = ['ES', 'CS', 'SS', 'DS'];
@@ -26,17 +27,19 @@
     jp: ['PF=1', f => !!f.PF], jpe: ['PF=1', f => !!f.PF], jnp: ['PF=0', f => !f.PF], jpo: ['PF=0', f => !f.PF]
   };
 
-  const INS = new Set(['mov', 'add', 'sub', 'inc', 'dec', 'and', 'or', 'xor', 'not', 'neg', 'test', 'cmp', 'shl', 'shr', 'xchg', 'loop', 'jmp', 'jcxz', 'nop', 'hlt']
+  const INS = new Set(['mov', 'add', 'sub', 'inc', 'dec', 'and', 'or', 'xor', 'not', 'neg', 'test', 'cmp', 'shl', 'shr', 'xchg', 'loop', 'jmp', 'jcxz', 'nop', 'hlt', 'in', 'out', 'int', 'iret', 'cli', 'sti', 'ror', 'rol']
     .concat(Object.keys(COND)));
 
+  function trunc(v, bits) { return bits === 8 ? (v & 0xFF) : bits === 16 ? (v & 0xFFFF) : ((v % 4294967296) + 4294967296) % 4294967296; }
   function hx(v, bits) {
-    const w = bits === 8 ? 2 : 4;
-    let s = ((v >>> 0) & (bits === 8 ? 0xFF : 0xFFFF)).toString(16).toUpperCase().padStart(w, '0');
+    const w = bits === 8 ? 2 : bits === 32 ? 8 : 4;
+    let s = trunc(v, bits).toString(16).toUpperCase().padStart(w, '0');
     if (/^[A-F]/.test(s)) s = '0' + s;
     return s + 'h';
   }
-  function bn(v, bits) { return ((v >>> 0) & (bits === 8 ? 0xFF : 0xFFFF)).toString(2).padStart(bits, '0') + 'b'; }
-  function mask(bits) { return bits === 8 ? 0xFF : 0xFFFF; }
+  function hx20(a) { return a.toString(16).toUpperCase().padStart(5, '0') + 'h'; }
+  function bn(v, bits) { return trunc(v, bits).toString(2).padStart(bits, '0') + 'b'; }
+  function mask(bits) { return bits === 8 ? 0xFF : bits === 16 ? 0xFFFF : 0xFFFFFFFF; }
   function vs(v, bits) { return v + ' (' + hx(v, bits) + ')'; }
   function chr(v) { return (v >= 32 && v < 127) ? "'" + String.fromCharCode(v) + "'" : null; }
 
@@ -132,13 +135,16 @@
     let s = str.trim();
     const low = s.toLowerCase();
     if (REG8[low]) return { t: 'r8', idx: REG8[low][0], hi: REG8[low][1], name: low.toUpperCase() };
+    if (low in REG32) return { t: 'r32', idx: REG32[low], name: low.toUpperCase() };
     if (low in REG16) return { t: 'r16', idx: REG16[low], name: low.toUpperCase() };
     if (low in SREG) return { t: 'seg', idx: SREG[low], name: low.toUpperCase() };
     let size = 0;
-    const pm = /^(byte|word)\s+(.*)$/i.exec(s);
-    if (pm) { size = pm[1].toLowerCase() === 'byte' ? 8 : 16; s = pm[2].trim(); }
+    const pm = /^(byte|word|dword)\s+(.*)$/i.exec(s);
+    if (pm) { const k = pm[1].toLowerCase(); size = k === 'byte' ? 8 : k === 'word' ? 16 : 32; s = pm[2].trim(); }
     if (s[0] === '[' && s[s.length - 1] === ']') {
-      const inner = s.slice(1, -1);
+      let inner = s.slice(1, -1); let seg = null;
+      const sm = /^\s*(cs|ds|es|ss)\s*:(.*)$/i.exec(inner);
+      if (sm) { seg = sm[1].toLowerCase(); inner = sm[2]; }
       const terms = inner.match(/[+-]?[^+-]+/g) || [];
       const regs = []; const rest = [];
       for (const t of terms) {
@@ -147,7 +153,7 @@
         else rest.push(t.trim());
       }
       let expr = rest.join('').replace(/^\+/, '');
-      return { t: 'mem', regs, expr: expr === '' ? null : expr, size, text: s };
+      return { t: 'mem', regs, expr: expr === '' ? null : expr, size, text: s, seg };
     }
     return { t: 'imm', expr: s };
   }
@@ -161,6 +167,12 @@
     return (d >= -128 && d <= 127) ? 2 : 3;
   }
   function insSize(op, a, b, bits) {
+    let n = insSizeBase(op, a, b, bits);
+    if (bits === 32 && op !== 'jmp') n += 1;                       // 0x66 operand-size prefix in real mode
+    for (const o of [a, b]) if (o && o.t === 'mem' && o.seg && o.seg !== 'ds') n += 1; // segment-override prefix
+    return n;
+  }
+  function insSizeBase(op, a, b, bits) {
     const isAcc = o => o && ((o.t === 'r8' && o.idx === 0 && !o.hi) || (o.t === 'r16' && o.idx === 0));
     const fit8 = o => !(o.expr && refsLabel(o.expr)) && o.vlen >= -128 && o.vlen <= 127;
     switch (op) {
@@ -168,6 +180,7 @@
         if (a.t === 'seg' || (b && b.t === 'seg')) return (a.t === 'mem' || b.t === 'mem') ? 1 + memBytes(a.t === 'mem' ? a : b) : 2;
         if (a.t === 'r8' && b.t === 'imm') return 2;
         if (a.t === 'r16' && b.t === 'imm') return 3;
+        if (a.t === 'r32' && b.t === 'imm') return 5;
         if (a.t !== 'mem' && b.t !== 'mem') return 2;
         if (a.t === 'mem' && b.t === 'imm') return 1 + memBytes(a) + (bits === 8 ? 1 : 2);
         { const m = a.t === 'mem' ? a : b; const r = a.t === 'mem' ? b : a;
@@ -185,7 +198,10 @@
       case 'inc': case 'dec':
         if (a.t === 'r16') return 1; if (a.t === 'r8') return 2; return 1 + memBytes(a);
       case 'not': case 'neg': return a.t === 'mem' ? 1 + memBytes(a) : 2;
-      case 'shl': case 'shr': return (b.t === 'imm' && b.vlen > 1) ? (a.t === 'mem' ? 2 + memBytes(a) : 3) : (a.t === 'mem' ? 1 + memBytes(a) : 2);
+      case 'in': case 'out': return ((a.t === 'imm') || (b && b.t === 'imm')) ? 2 : 1;
+      case 'int': return 2;
+      case 'iret': case 'cli': case 'sti': return 1;
+      case 'shl': case 'shr': case 'ror': case 'rol': return (b.t === 'imm' && b.vlen > 1) ? (a.t === 'mem' ? 2 + memBytes(a) : 3) : (a.t === 'mem' ? 1 + memBytes(a) : 2);
       case 'xchg': if (a.t === 'r16' && b.t === 'r16' && (a.idx === 0 || b.idx === 0)) return 1; return a.t === 'mem' || b.t === 'mem' ? 1 + memBytes(a.t === 'mem' ? a : b) : 2;
       case 'nop': case 'hlt': return 1;
       default: return 2; // jumps / loop
@@ -316,7 +332,7 @@
         } catch (e) { e.line = it.line; throw e; }
       }
       // memory image
-      const mem = new Uint8Array(65536);
+      const mem = new Uint8Array(1 << 20);
       const dataEnd = [];
       for (const it of items) {
         if (it.kind === 'data') {
@@ -352,23 +368,28 @@
   function sizeBits(it, lenient) {
     const [a, b] = it.ops;
     const jumpish = it.op === 'loop' || it.op === 'jmp' || it.op === 'jcxz' || COND[it.op];
-    if (jumpish || it.op === 'nop' || it.op === 'hlt') return 16;
-    for (const o of [a, b]) { if (!o) continue; if (o.t === 'r8') return 8; if (o.t === 'r16' || o.t === 'seg') return 16; }
+    if (jumpish || ['nop', 'hlt', 'int', 'iret', 'cli', 'sti'].includes(it.op)) return 16;
+    for (const o of [a, b]) { if (!o) continue; if (o.t === 'r8') return 8; if (o.t === 'r32') return 32; if (o.t === 'r16' || o.t === 'seg') return 16; }
     for (const o of [a, b]) { if (o && o.t === 'mem' && o.size) return o.size; }
     if (lenient) return 8;
     throw new Error('FASM: no se sabe el tamaño del operando; escribe "byte [..]" o "word [..]"');
   }
   function validate(it) {
     const [a, b] = it.ops; const op = it.op;
-    const need = { mov: 2, add: 2, sub: 2, and: 2, or: 2, xor: 2, cmp: 2, test: 2, xchg: 2, shl: 2, shr: 2, inc: 1, dec: 1, not: 1, neg: 1, loop: 1, jmp: 1, jcxz: 1, nop: 0, hlt: 0 };
+    const need = { mov: 2, add: 2, sub: 2, and: 2, or: 2, xor: 2, cmp: 2, test: 2, xchg: 2, shl: 2, shr: 2, ror: 2, rol: 2, in: 2, out: 2, int: 1, iret: 0, cli: 0, sti: 0, inc: 1, dec: 1, not: 1, neg: 1, loop: 1, jmp: 1, jcxz: 1, nop: 0, hlt: 0 };
     const n = COND[op] ? 1 : need[op];
     if (it.ops.length !== n) throw new Error(op + ' necesita ' + n + ' operando(s)');
-    if (a && a.t === 'imm' && !['loop', 'jmp', 'jcxz'].includes(op) && !COND[op]) throw new Error('El destino de ' + op + ' no puede ser un número');
+    if (a && a.t === 'imm' && !['loop', 'jmp', 'jcxz', 'out', 'int'].includes(op) && !COND[op]) throw new Error('El destino de ' + op + ' no puede ser un número');
     if (a && b && a.t === 'mem' && b.t === 'mem') throw new Error('No se puede operar de memoria a memoria en una sola instrucción (usa un registro)');
     if (op === 'mov' && a.t === 'seg' && b.t === 'imm') throw new Error('mov a un registro de segmento no admite un número: usa mov ax, cs / mov ds, ax');
     if (op === 'mov' && a.t === 'seg' && b.t === 'seg') throw new Error('mov entre registros de segmento no existe: pasa por AX');
-    if (a && b && a.t !== 'mem' && b.t !== 'mem' && b.t !== 'imm') {
-      const sa = a.t === 'r8' ? 8 : 16, sb = b.t === 'r8' ? 8 : 16;
+    if ((op === 'in' || op === 'out')) {
+      const reg = op === 'in' ? a : b, port = op === 'in' ? b : a;
+      if (!(reg.t === 'r8' && reg.idx === 0 && !reg.hi) && !(reg.t === 'r16' && reg.idx === 0)) throw new Error(op.toUpperCase() + ' solo trabaja con AL o AX');
+      if (!(port.t === 'imm' || (port.t === 'r16' && port.idx === 2))) throw new Error('El puerto debe ser un número (0..255) o DX');
+    }
+    if (a && b && op !== 'in' && op !== 'out' && a.t !== 'mem' && b.t !== 'mem' && b.t !== 'imm' && a.t !== 'seg' && b.t !== 'seg') {
+      const sz = o => o.t === 'r8' ? 8 : o.t === 'r32' ? 32 : 16; const sa = sz(a), sb = sz(b);
       if (sa !== sb) throw new Error('Los dos registros deben tener el mismo tamaño (' + a.name + ' y ' + b.name + ' no lo tienen)');
     }
     if (a && b && (a.t === 'r8' || (a.t === 'mem' && it.bits === 8)) && b.t === 'imm' && (b.v > 255 || b.v < -128))
@@ -379,44 +400,53 @@
 
   /* ---------------- CPU ---------------- */
   function ea(cpu, o) {
-    let s = o.disp || 0;
-    for (const r of o.regs) s += cpu.regs[REG16[r]];
-    return s & 0xFFFF;
+    let off = o.disp || 0;
+    for (const r of o.regs) off += cpu.regs[REG16[r]] & 0xFFFF;
+    off &= 0xFFFF;
+    const seg = o.seg ? cpu.sregs[SREG[o.seg]] : cpu.sregs[3];
+    return ((seg << 4) + off) & 0xFFFFF;
+  }
+  function readMem(cpu, a, bits) {
+    if (bits === 8) return cpu.mem[a];
+    if (bits === 16) return cpu.mem[a] | (cpu.mem[(a + 1) & 0xFFFFF] << 8);
+    return (cpu.mem[a] | (cpu.mem[(a + 1) & 0xFFFFF] << 8) | (cpu.mem[(a + 2) & 0xFFFFF] << 16) | (cpu.mem[(a + 3) & 0xFFFFF] << 24)) >>> 0;
   }
   function rd(cpu, o, bits) {
     switch (o.t) {
-      case 'imm': return o.v & mask(bits);
+      case 'imm': return trunc(o.v, bits);
       case 'r8': { const v = cpu.regs[o.idx]; return o.hi ? (v >> 8) & 0xFF : v & 0xFF; }
-      case 'r16': return cpu.regs[o.idx];
+      case 'r16': return cpu.regs[o.idx] & 0xFFFF;
+      case 'r32': return cpu.regs[o.idx] >>> 0;
       case 'seg': return cpu.sregs[o.idx];
-      case 'mem': { const a = ea(cpu, o); return bits === 8 ? cpu.mem[a] : (cpu.mem[a] | (cpu.mem[(a + 1) & 0xFFFF] << 8)); }
+      case 'mem': return readMem(cpu, ea(cpu, o), bits);
     }
   }
   function wr(cpu, o, bits, v) {
-    v &= mask(bits);
+    v = trunc(v, bits);
     switch (o.t) {
-      case 'r8': { const cur = cpu.regs[o.idx]; cpu.regs[o.idx] = o.hi ? ((cur & 0x00FF) | (v << 8)) : ((cur & 0xFF00) | v); break; }
-      case 'r16': cpu.regs[o.idx] = v; break;
+      case 'r8': { const cur = cpu.regs[o.idx] >>> 0; cpu.regs[o.idx] = o.hi ? cur - (cur & 0xFF00) + (v << 8) : cur - (cur & 0xFF) + v; break; }
+      case 'r16': { const cur = cpu.regs[o.idx] >>> 0; cpu.regs[o.idx] = cur - (cur & 0xFFFF) + v; break; }
+      case 'r32': cpu.regs[o.idx] = v; break;
       case 'seg': cpu.sregs[o.idx] = v; break;
       case 'mem': {
-        const a = ea(cpu, o);
-        const old = bits === 8 ? cpu.mem[a] : (cpu.mem[a] | (cpu.mem[(a + 1) & 0xFFFF] << 8));
-        cpu.mem[a] = v & 0xFF; if (bits === 16) cpu.mem[(a + 1) & 0xFFFF] = v >> 8;
+        const a = ea(cpu, o); const old = readMem(cpu, a, bits);
+        for (let k = 0; k < bits / 8; k++) cpu.mem[(a + k) & 0xFFFFF] = Math.floor(v / Math.pow(256, k)) & 0xFF;
         cpu.writes.push({ addr: a, old, val: v, bits });
         break;
       }
     }
   }
   function parity(v) { let x = v & 0xFF, c = 0; while (x) { c += x & 1; x >>= 1; } return c % 2 === 0 ? 1 : 0; }
-  function setSZP(f, r, bits) { f.ZF = r === 0 ? 1 : 0; f.SF = (r & (bits === 8 ? 0x80 : 0x8000)) ? 1 : 0; f.PF = parity(r); }
+  function setSZP(f, r, bits) { f.ZF = r === 0 ? 1 : 0; f.SF = (r / Math.pow(2, bits - 1) | 0) & 1 ? 1 : 0; f.PF = parity(r); }
   function alu(cpu, op, a, b, bits) {
-    const f = cpu.flags, m = mask(bits), sg = bits === 8 ? 0x80 : 0x8000; let r;
+    const f = cpu.flags, top = Math.pow(2, bits - 1); let r;
+    const msb = v => Math.floor(trunc(v, bits) / top) & 1;
     switch (op) {
-      case 'add': r = a + b; f.CF = r > m ? 1 : 0; f.OF = ((a ^ r) & (b ^ r) & sg) ? 1 : 0; r &= m; break;
-      case 'sub': case 'cmp': r = a - b; f.CF = a < b ? 1 : 0; f.OF = ((a ^ b) & (a ^ r) & sg) ? 1 : 0; r &= m; break;
-      case 'and': case 'test': r = a & b; f.CF = 0; f.OF = 0; break;
-      case 'or': r = a | b; f.CF = 0; f.OF = 0; break;
-      case 'xor': r = a ^ b; f.CF = 0; f.OF = 0; break;
+      case 'add': r = a + b; f.CF = r >= top * 2 ? 1 : 0; r = trunc(r, bits); f.OF = (msb(a) === msb(b) && msb(r) !== msb(a)) ? 1 : 0; break;
+      case 'sub': case 'cmp': r = a - b; f.CF = a < b ? 1 : 0; r = trunc(r, bits); f.OF = (msb(a) !== msb(b) && msb(r) !== msb(a)) ? 1 : 0; break;
+      case 'and': case 'test': r = trunc(bits === 32 ? (a & b) >>> 0 : a & b, bits); f.CF = 0; f.OF = 0; break;
+      case 'or': r = trunc(bits === 32 ? (a | b) >>> 0 : a | b, bits); f.CF = 0; f.OF = 0; break;
+      case 'xor': r = trunc(bits === 32 ? (a ^ b) >>> 0 : a ^ b, bits); f.CF = 0; f.OF = 0; break;
     }
     setSZP(f, r, bits); return r;
   }
@@ -430,12 +460,35 @@
     const ai = prog.anon.indexOf(a); if (ai >= 0) return '@@';
     return null;
   }
+  function physName(a) {
+    if (a >= 0xB8000 && a < 0xB8FA0) { const o = a - 0xB8000; return 'pantalla (texto): fila ' + Math.floor(o / 160) + ', columna ' + Math.floor((o % 160) / 2) + (o % 2 ? ' · byte de ATRIBUTO' : ' · byte de CARÁCTER'); }
+    if (a >= 0xA0000 && a < 0xAFA00) { const o = a - 0xA0000; return 'pantalla (gráfico 13h): x=' + (o % 320) + ', y=' + Math.floor(o / 320); }
+    if (a < 0x400) { const n = a >> 2; return 'tabla de vectores, INT ' + n + ((a & 3) < 2 ? ' · desplazamiento (IP)' : ' · segmento (CS)'); }
+    return null;
+  }
   function addrTxt(prog, a) {
-    const n = memName(prog, a) || codeName(prog, a);
-    return hx(a, 16) + (n ? ' = ' + n : '');
+    const n = (a < 0x10000 && a >= 0x400 ? (memName(prog, a) || codeName(prog, a)) : null) || physName(a);
+    return (a > 0xFFFF ? hx20(a) : hx(a, 16)) + (n ? ' = ' + n : '');
   }
   function flagTxt(f) { return 'ZF=' + f.ZF + ', CF=' + f.CF + ', SF=' + f.SF; }
   function opTxt(o) { return o.t === 'imm' ? o.expr : o.t === 'mem' ? o.text.replace(/^(byte|word)\s+/i, '').toUpperCase().replace(/\bBYTE\b|\bWORD\b/, '') : o.name; }
+
+  function flagsWord(f) { return 0x0002 | (f.CF ? 1 : 0) | (f.PF ? 4 : 0) | (f.ZF ? 0x40 : 0) | (f.SF ? 0x80 : 0) | (f.IF ? 0x200 : 0) | (f.OF ? 0x800 : 0); }
+  function setFlags(f, w) { f.CF = w & 1; f.PF = (w >> 2) & 1; f.ZF = (w >> 6) & 1; f.SF = (w >> 7) & 1; f.IF = (w >> 9) & 1; f.OF = (w >> 11) & 1; }
+  const stackAddr = cpu => ((cpu.sregs[2] << 4) + (cpu.regs[4] & 0xFFFF)) & 0xFFFFF;
+  function push16(cpu, v) { cpu.regs[4] = ((cpu.regs[4] & 0xFFFF) - 2) & 0xFFFF; const a = stackAddr(cpu); cpu.mem[a] = v & 0xFF; cpu.mem[(a + 1) & 0xFFFFF] = (v >> 8) & 0xFF; }
+  function pop16(cpu) { const a = stackAddr(cpu); const v = cpu.mem[a] | (cpu.mem[(a + 1) & 0xFFFFF] << 8); cpu.regs[4] = ((cpu.regs[4] & 0xFFFF) + 2) & 0xFFFF; return v; }
+  function setVideoMode(cpu, mode) {
+    cpu.vmode = mode;
+    if (mode === 3) for (let i = 0; i < 2000; i++) { cpu.mem[0xB8000 + 2 * i] = 0x20; cpu.mem[0xB8000 + 2 * i + 1] = 0x07; }
+    else if (mode === 0x13) cpu.mem.fill(0, 0xA0000, 0xA0000 + 64000);
+    else throw new Error('Modo de video ' + hx(mode, 8) + ' no soportado por el simulador (solo 03h texto y 13h gráfico).');
+  }
+  function ioRead(cpu, port) {
+    if (port === 0x60) { const v = cpu.kbd.length ? cpu.kbd.shift() : cpu.lastScan; cpu.lastScan = v; return v; }
+    if (port === 0x64) return cpu.kbd.length ? 1 : 0;
+    return 0;
+  }
 
   function exec(cpu, it, prog) {
     const op = it.op, [a, b] = it.ops, bits = it.bits;
@@ -444,7 +497,7 @@
     switch (op) {
       case 'mov': {
         const v = rd(cpu, b, bits);
-        const oldTxt = a.t === 'mem' ? (() => { const ad = ea(cpu, a); return bits === 8 ? cpu.mem[ad] : cpu.mem[ad] | (cpu.mem[(ad + 1) & 0xFFFF] << 8); })() : null;
+        const oldTxt = a.t === 'mem' ? readMem(cpu, ea(cpu, a), bits) : null;
         const dstDesc = a.t === 'mem' ? memDesc(a) : null;
         wr(cpu, a, bits, v);
         if (b.t === 'imm') ex = b.isAddr ? 'Carga en ' + a.name + ' la dirección de «' + b.expr + '» = ' + hx(v, 16) + '. Ojo: es un número (la dirección), no el contenido de memoria.' : (a.t === 'mem' ? 'Escribe el número ' + vs(v, bits) + ' en la memoria ' + dstDesc + '. Antes había ' + oldTxt + '.' : 'Carga el número ' + vs(v, bits) + ' en ' + a.name + '.');
@@ -503,6 +556,46 @@
       case 'jcxz': { const t = a.v & 0xFFFF; if (cpu.regs[1] === 0) { next = t; taken = true; } else taken = false; ex = 'JCXZ salta si CX = 0. CX = ' + cpu.regs[1] + ' ⇒ ' + (taken ? 'SALTA.' : 'no salta.'); break; }
       case 'nop': ex = 'No hace nada.'; break;
       case 'hlt': halt = 'hlt'; ex = 'HLT detiene el procesador.'; break;
+      case 'in': {
+        const port = b.t === 'imm' ? (b.v & 0xFF) : (cpu.regs[2] & 0xFFFF); const v = ioRead(cpu, port); wr(cpu, a, bits, v);
+        if (port === 0x64) { ex = 'IN lee el puerto ' + hx(port, 8) + ': el registro de ESTADO del controlador de teclado. AL = ' + bn(v, 8) + '. El bit 0 vale 1 cuando hay un código de tecla esperando en el puerto 60h' + (v & 1 ? ' ⇒ ahora SÍ hay una tecla.' : ' ⇒ todavía no hay tecla.'); if (!v && !cpu.kbd.length && !cpu.hasFutureKey()) { halt = 'wait-key'; ex += ' Nadie más pulsará teclas: el programa se queda esperando en este bucle de sondeo.'; } }
+        else if (port === 0x60) ex = 'IN lee el puerto 60h: el SCAN CODE de la tecla. AL = ' + vs(v, 8) + (v > 127 ? ' ⇒ ≥ 128: tecla SOLTADA (código de pulsación + 80h).' : ' ⇒ < 128: tecla PRESIONADA.');
+        else ex = 'IN lee un byte del puerto ' + hx(port, 8) + ' y lo deja en AL.';
+        break;
+      }
+      case 'out': {
+        const port = a.t === 'imm' ? (a.v & 0xFF) : (cpu.regs[2] & 0xFFFF); const v = rd(cpu, b, bits);
+        if (port === 0x20) { cpu.eoi = (cpu.eoi || 0) + 1; if (v === 0x20) { cpu.isr.sort((x, y) => x - y); cpu.isr.shift(); } ex = 'OUT 20h, AL envía al controlador de interrupciones 8259 (PIC) el comando ' + hx(v, 8) + ' = EOI (End Of Interrupt, «fin de interrupción»): le avisa de que ya se terminó de atender la IRQ. Sin esto el PIC no volvería a interrumpir.'; }
+        else ex = 'OUT escribe ' + vs(v, bits) + ' en el puerto ' + hx(port, 8) + '.';
+        break;
+      }
+      case 'int': {
+        const n = a.v & 0xFF; const ah = (cpu.regs[0] >> 8) & 0xFF, al = cpu.regs[0] & 0xFF;
+        if (n !== 0x10) throw new Error('INT ' + hx(n, 8) + ' no está soportada por el simulador (solo INT 10h).');
+        if (ah !== 0) throw new Error('INT 10h con AH=' + hx(ah, 8) + ' no está soportada (solo AH=00h: fijar modo de video).');
+        setVideoMode(cpu, al);
+        ex = 'INT 10h es una llamada a los servicios de video del BIOS. Con AH=00h fija el MODO DE VIDEO que indica AL = ' + hx(al, 8) + (al === 3 ? ': modo TEXTO de 80 columnas × 25 filas, 16 colores.' : ': modo GRÁFICO de 320 × 200 píxeles, 256 colores.') + ' Además borra la pantalla.';
+        break;
+      }
+      case 'cli': f.IF = 0; ex = 'CLI (Clear Interrupt flag): IF ← 0. El procesador deja de atender interrupciones enmascarables hasta un STI.'; break;
+      case 'sti': f.IF = 1; ex = 'STI (Set Interrupt flag): IF ← 1. Desde ahora el procesador SÍ atiende las interrupciones (temporizador, teclado…).'; break;
+      case 'iret': {
+        const ipv = pop16(cpu), csv = pop16(cpu), fw = pop16(cpu); cpu.sregs[1] = csv; setFlags(f, fw); next = ipv; taken = true;
+        ex = 'IRET (retorno de interrupción) saca de la pila tres palabras: IP = ' + hx(ipv, 16) + ', CS = ' + hx(csv, 16) + ' y los FLAGS (con IF = ' + f.IF + '). El programa principal continúa exactamente donde la interrupción lo detuvo.';
+        break;
+      }
+      case 'ror': case 'rol': {
+        const x = rd(cpu, a, bits); const n = (b.t === 'imm' ? b.v : (cpu.regs[1] & 0xFF)) % bits; let r = x;
+        if (n > 0) {
+          if (op === 'ror') r = trunc(Math.floor(x / Math.pow(2, n)) + (x % Math.pow(2, n)) * Math.pow(2, bits - n), bits);
+          else r = trunc((x * Math.pow(2, n)) % Math.pow(2, bits) + Math.floor(x / Math.pow(2, bits - n)), bits);
+          f.CF = op === 'ror' ? (Math.floor(r / Math.pow(2, bits - 1)) & 1) : (r & 1);
+        }
+        wr(cpu, a, bits, r);
+        const show = bits === 32 ? hx(x, 32) + ' → ' + hx(r, 32) : bn(x, bits) + ' → ' + bn(r, bits);
+        ex = (op === 'ror' ? 'ROR gira los bits ' + n + ' posición a la DERECHA' : 'ROL gira los bits ' + n + ' posición a la IZQUIERDA') + ': el bit que sale por un extremo entra por el otro (nada se pierde). ' + a.name + ': ' + show + '.' + (bits === 32 ? ' (Cada byte son los 8 bits de un color de píxel: ' + hx(x & 0xFF, 8) + ' → ' + hx(r & 0xFF, 8) + ' en el byte bajo.)' : '');
+        break;
+      }
       default: {
         const c = COND[op]; const t = a.v & 0xFFFF; taken = !!c[1](f);
         if (taken) next = t;
@@ -512,31 +605,89 @@
     return { ex, taken, next, halt };
   }
 
+  const IRQ_NAME = { 8: 'IRQ 0 (temporizador del sistema)', 9: 'IRQ 1 (teclado)' };
+
+  /* opts: { maxSteps, events: [{at, kind:'key', scan}], timer: {period}, demo }
+   * Time is measured in executed instructions ("ticks"). A timer period of N means one IRQ 0 every N instructions. */
   function run(prog, opts) {
     opts = opts || {};
     const maxSteps = opts.maxSteps || 5000;
-    const cpu = { regs: new Array(8).fill(0), sregs: [0, 0, 0, 0], flags: { CF: 0, ZF: 0, SF: 0, OF: 0, PF: 0 }, mem: new Uint8Array(prog.mem), writes: [] };
+    const cpu = { regs: new Array(8).fill(0), sregs: [0, 0, 0, 0], flags: { CF: 0, ZF: 0, SF: 0, OF: 0, PF: 0, IF: 0 }, mem: new Uint8Array(prog.mem), writes: [], kbd: [], lastScan: 0, vmode: null, eoi: 0, isr: [] };
     cpu.regs[4] = prog.start; // SP just below the loaded sector
+    const events = (opts.events || []).map(e => Object.assign({}, e)).sort((x, y) => x.at - y.at); let evI = 0;
+    const timer = opts.timer && opts.timer.period > 0 ? opts.timer : null; let nextTimer = timer ? timer.period : Infinity;
+    const nextEventTick = () => Math.min(evI < events.length ? events[evI].at : Infinity, nextTimer);
+    const handlerFor = n => (readMem(cpu, n * 4, 16) | readMem(cpu, n * 4 + 2, 16)) !== 0;
+    cpu.hasFutureKey = () => evI < events.length;
+    // will some future event actually be delivered to the program? (a timer or key IRQ with an installed handler)
+    cpu.hasDeliverable = () => (timer && handlerFor(8)) || (events.slice(evI).some(e => e.kind === 'key') && handlerFor(9));
+    let tick = 0; const pending = [];
     let ip = prog.start;
-    const snap = (extra) => Object.assign({ regs: cpu.regs.slice(), sregs: cpu.sregs.slice(), flags: Object.assign({}, cpu.flags), mem: cpu.mem.slice(prog.start, prog.end) }, extra);
+    const snap = (extra) => Object.assign({ regs: cpu.regs.slice(), sregs: cpu.sregs.slice(), flags: Object.assign({}, cpu.flags), mem: cpu.mem.slice(prog.start, prog.end), stack: [0, 2, 4, 6].map(o => readMem(cpu, (stackAddr(cpu) + o) & 0xFFFFF, 16)) }, extra);
     const steps = [];
     const initial = snap({ ip });
     let halted = null;
     while (steps.length < maxSteps) {
+      // 1) hardware events that happened by now
+      while (evI < events.length && events[evI].at <= tick) { const e = events[evI++]; if (e.kind === 'key') { cpu.kbd.push(e.scan); if (!pending.includes(9)) pending.push(9); } }
+      while (tick >= nextTimer) { if (!pending.includes(8)) pending.push(8); nextTimer += timer.period; }
+      // 2) deliver an interrupt if allowed
+      if (pending.length && cpu.flags.IF) {
+        let vec = null;
+        for (let q = 0; q < pending.length && !vec; q++) {
+          const n = pending[q], irq = n - 8;
+          const off = readMem(cpu, n * 4, 16), seg = readMem(cpu, n * 4 + 2, 16);
+          if (!(off || seg)) { pending.splice(q, 1); q--; continue; }          // nobody installed a handler: request ignored
+          if (cpu.isr.some(x => x <= irq)) continue;                           // the PIC holds it back until the EOI of a higher/equal IRQ
+          vec = { n, off, seg }; pending.splice(q, 1); cpu.isr.push(irq);
+        }
+        if (!vec) { /* nothing deliverable right now */ }
+        else {
+          const from = ip; push16(cpu, flagsWord(cpu.flags)); push16(cpu, cpu.sregs[1]); push16(cpu, ip);
+          cpu.flags.IF = 0; cpu.sregs[1] = vec.seg; ip = vec.off;
+          steps.push(snap({ n: steps.length + 1, ip: from, line: null, text: IRQ_NAME[vec.n] ? IRQ_NAME[vec.n].split(' (')[0] + ' → INT ' + vec.n : 'INT ' + vec.n, op: 'irq', explain: 'El hardware pide atención: ' + (IRQ_NAME[vec.n] || 'interrupción ' + vec.n) + '. Como IF = 1, el procesador termina la instrucción actual y: (1) guarda en la pila FLAGS, CS e IP (la dirección ' + hx(from, 16) + ' a la que debe volver); (2) pone IF = 0; (3) lee el vector número ' + vec.n + ' de la tabla de vectores de interrupción (dirección 0000:' + hx(vec.n * 4, 16) + ' = 4 × ' + vec.n + ') y salta a la rutina ' + hx(vec.seg, 16) + ':' + hx(vec.off, 16) + '.', taken: null, next: vec.off, writes: [], item: null, tick }));
+          continue;
+        }
+      }
       const it = prog.byAddr.get(ip);
       if (!it) { halted = { reason: 'noins', msg: 'IP = ' + hx(ip, 16) + ' no apunta a una instrucción (cayó en datos o relleno). Falta un «jmp $» al final del código.' }; break; }
-      cpu.writes = [];
+      cpu.writes = []; cpu.vmode = null;
       let r;
       try { r = exec(cpu, it, prog); } catch (e) { halted = { reason: 'error', msg: e.message }; break; }
-      const s = snap({ n: steps.length + 1, ip: it.addr, line: it.line, text: it.text, op: it.op, explain: r.ex, taken: r.taken, next: r.next, writes: cpu.writes.slice(), item: it });
+      tick++;
+      const s = snap({ n: steps.length + 1, ip: it.addr, line: it.line, text: it.text, op: it.op, explain: r.ex, taken: r.taken, next: r.next, writes: cpu.writes.slice(), item: it, vmode: cpu.vmode, tick });
       steps.push(s);
-      if (r.halt) { halted = { reason: r.halt, msg: r.halt === 'jmp $' ? 'El programa llegó a «jmp $» (parada).' : 'HLT' }; break; }
+      if (r.halt === 'jmp $' && cpu.flags.IF && cpu.hasDeliverable()) {
+        s.explain = 'JMP $: salta a sí misma (espera activa). Como las interrupciones están activadas (IF = 1), el programa principal «no hace nada» aquí y solo reacciona cuando llega una interrupción.';
+        tick = Math.max(tick, nextEventTick()); ip = r.next; continue;
+      }
+      if (r.halt) { halted = { reason: r.halt, msg: r.halt === 'jmp $' ? 'El programa llegó a «jmp $» (parada).' : r.halt === 'wait-key' ? 'El programa quedó esperando una tecla (bucle de sondeo del teclado): ya no llegan más eventos.' : 'HLT' }; break; }
       ip = r.next;
     }
-    if (!halted) halted = { reason: 'limit', msg: 'Se alcanzó el límite de ' + maxSteps + ' pasos (¿bucle infinito? ¿CX = 0 al entrar a LOOP da 65536 vueltas).' };
+    if (!halted) halted = opts.demo ? { reason: 'demo', msg: 'Demostración detenida a los ' + maxSteps + ' pasos: el programa es un bucle infinito por diseño (sigue funcionando mientras la máquina esté encendida).' } : { reason: 'limit', msg: 'Se alcanzó el límite de ' + maxSteps + ' pasos (¿bucle infinito? ¿CX = 0 al entrar a LOOP da 65536 vueltas).' };
     const last = steps.length ? steps[steps.length - 1] : initial;
-    return { steps, initial, final: last, halted };
+    return { steps, initial, final: last, halted, eoi: cpu.eoi };
   }
+
+  /* ---------------- screen reconstruction ---------------- */
+  function emptyScreen() { return { mode: 'text', chars: new Uint8Array(2000).fill(0x20), attrs: new Uint8Array(2000).fill(0x07), gfx: new Uint8Array(64000) }; }
+  function applyStepToScreen(sc, s) {
+    if (s.vmode != null) { sc.mode = s.vmode === 0x13 ? 'gfx' : 'text'; if (s.vmode === 3) { sc.chars.fill(0x20); sc.attrs.fill(0x07); } else if (s.vmode === 0x13) sc.gfx.fill(0); }
+    for (const w of s.writes) {
+      for (let k = 0; k < w.bits / 8; k++) {
+        const a = w.addr + k; const byte = Math.floor(w.val / Math.pow(256, k)) & 0xFF;
+        if (a >= 0xB8000 && a < 0xB8FA0) { const o = a - 0xB8000; if (o % 2 === 0) sc.chars[o >> 1] = byte; else sc.attrs[o >> 1] = byte; }
+        else if (a >= 0xA0000 && a < 0xAFA00) sc.gfx[a - 0xA0000] = byte;
+      }
+    }
+  }
+  /* screen after executing the first k steps of a run */
+  function screenAt(trace, k) {
+    const sc = emptyScreen();
+    for (let i = 0; i < k && i < trace.steps.length; i++) applyStepToScreen(sc, trace.steps[i]);
+    return sc;
+  }
+  function usesVideo(trace) { return trace.steps.some(s => s.vmode != null || s.writes.some(w => (w.addr >= 0xB8000 && w.addr < 0xB8FA0) || (w.addr >= 0xA0000 && w.addr < 0xAFA00))); }
 
   /* ---------------- read helpers ---------------- */
   function readLabel(prog, memArr, label) {
@@ -570,7 +721,7 @@
     return its;
   }
 
-  const Emu = { assemble, run, runSource, readLabel, iterations, hx, bn, vs, chr, memName, R16N, SN, REG16, COND, evalExpr };
+  const Emu = { assemble, run, runSource, readLabel, iterations, screenAt, usesVideo, hx, hx20, bn, vs, chr, memName, physName, R16N, SN, REG16, COND, evalExpr };
   if (typeof module !== 'undefined' && module.exports) module.exports = Emu;
   else root.Emu = Emu;
 })(typeof window !== 'undefined' ? window : globalThis);
