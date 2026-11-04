@@ -7,9 +7,12 @@
   const sim = UI.Sim();
   let pendingSim = null;
 
-  const GROUPS = { q2: 'Pregunta 2 · Memoria y tiempos', q3: 'Pregunta 3 · Ensamblador' };
+  const GROUPS = { p2: '2da prueba · Interrupciones y video', q2: 'Pregunta 2 · Memoria y tiempos', q3: 'Pregunta 3 · Ensamblador' };
   const SECTIONS = [
     { id: 'map', icon: '🧭', title: 'La prueba', sub: 'Qué preguntan y cómo se responde', render: secMap },
+    { id: 'p2teo', group: 'p2', icon: '⏱', title: 'Teoría', sub: 'Interrupciones, temporizador, 32 bits, 13h', render: secP2Teo },
+    { id: 'p2res', group: 'p2', icon: '✅', title: 'Pruebas resueltas', sub: 'Batería A y B (preguntas 2 y 3)', render: secP2Res },
+    { id: 'p2ej', group: 'p2', icon: '🏋', title: 'Ejercicios', sub: 'Completar código, cálculos, teoría', render: secP2Ej },
     { id: 'ddr', group: 'q2', icon: '💾', title: 'Conceptos y fórmulas', sub: 'Qué es cada dato y cada fórmula', render: secDDR },
     { id: 'ddrcalc', group: 'q2', icon: '🧮', title: 'Calculadora y resueltas', sub: 'Paso a paso · las 6 baterías', render: secDDRCalc },
     { id: 'ddrpract', group: 'q2', icon: '🏋', title: 'Ejercicios', sub: 'Series y banco ilimitado', render: secDDRPractice },
@@ -41,7 +44,7 @@
     try { history.replaceState(null, '', '#' + s.id); } catch (e) { /* file:// restrictions */ }
     Store.set('last', s.id);
   }
-  function openSim(source, title) { pendingSim = { source, title }; go('sim'); }
+  function openSim(source, title, opts) { pendingSim = { source, title, opts }; go('sim'); }
 
   const prog = document.getElementById('progress');
   function refreshProgress() { const t = Stats.total(); prog.textContent = t.n ? t.ok + ' / ' + t.n + ' ejercicios bien' : 'Aún sin ejercicios'; }
@@ -245,6 +248,59 @@
   function symbolsTable() {
     return h('div', { class: 'tscroll' }, h('table', null, h('thead', null, h('tr', null, ['Símbolo', 'Significado', 'Unidad', 'Apartado'].map(t => h('th', null, t)))),
       h('tbody', null, window.Fx.SYMBOLS.map(r => h('tr', null, h('td', { class: 'fx' , html: '<math>' + r[0] + '</math>' }), h('td', null, r[1]), h('td', null, r[2]), h('td', null, r[3]))))));
+  }
+
+
+  /* ===== 2da prueba: interrupciones, temporizador, video ===== */
+  function secP2Teo() {
+    view.append(
+      callout('good', h('b', null, 'Prioridad para esta prueba: '), 'interrupciones y temporizador (vectores, EOI, IRET), registros de 32 bits con ROR, y completar código. ', h('b', null, 'Video en modo texto y teclado: incluido al final, pero no entra.')),
+      h('h2', null, '1 · Interrupciones'),
+      card(P('Una ', h('b', null, 'interrupción'), ' es un aviso del hardware (o de una instrucción ', C('int n'), ') que hace que el procesador suspenda el programa, ejecute una ', h('b', null, 'rutina de servicio'), ' y luego continúe donde estaba.'),
+        h('ul', null, h('li', null, h('b', null, 'Tabla de vectores (IVT): '), '256 entradas × 4 bytes en 0000:0000–03FFh. La entrada n está en ', C('4 × n'), ': primero IP (desplazamiento) y luego CS (segmento).'), h('li', null, 'IRQ 0 (temporizador) → ', C('INT 8'), ' → 4×8 = ', C('20h'), '.  IRQ 1 (teclado) → ', C('INT 9'), ' → 4×9 = ', C('24h'), '.'),
+          h('li', null, h('b', null, 'Al llegar la interrupción '), '(con IF = 1): se apilan FLAGS, CS e IP (SP baja 6 bytes), IF = 0 y se salta al vector. ', C('iret'), ' los saca de la pila y vuelve.'),
+          h('li', null, h('b', null, 'EOI: '), C('mov al, 20h / out 20h, al'), ' avisa al PIC (8259) de que terminaste; sin él no llegan más interrupciones.'), h('li', null, C('cli'), ' (IF=0) desactiva y ', C('sti'), ' (IF=1) activa las interrupciones.'))),
+      card(h('h3', null, 'Instalar la rutina del temporizador'), codeBlock("xor ax, ax\nmov es, ax            ; ES = 0000h: donde está la tabla de vectores\nmov ax, timer         ; AX = dirección de la rutina\nmov [es:4*8], ax      ; desplazamiento (IP) en el vector 8\nmov [es:4*8+2], cs    ; segmento (CS) en el vector 8\nsti                   ; activar interrupciones\n...\ntimer:\ncli\ninc dl                ; contar la interrupción\nmov al, 20h\nout 20h, al           ; EOI al PIC\nsti\niret                  ; volver al programa principal"),
+        P('El temporizador interrumpe ≈ ', h('b', null, '18.2 veces por segundo'), ': ', C('cmp dl, 18'), ' ≈ 1 s, ', C('cmp dl, 36'), ' ≈ 2 s. El programa principal espera con ', C('cmp dl, 18 / jne @b'), ', dibuja, y reinicia con ', C('xor dl, dl'), '.'),
+        h('button', { class: 'btn primary', onclick: () => { const e = window.Programs2.EXAMS2.find(x => x.id === 'A3'); openSim(e.source, 'Batería A · Pregunta 3', { timer: e.timer, demo: true, maxSteps: 3200 }); } }, '▶ Ver la interrupción en el simulador (pila, tabla de vectores, IF)')),
+      h('h2', null, '2 · Registros de 32 bits y ROR'),
+      card(P(C('mov ebx, 04040404h'), ': EBX tiene 4 bytes iguales (color 4 = rojo). ', C('mov [es:di], ebx'), ' escribe 4 píxeles de una vez. ', C('ror ebx, 1'), ' gira los 32 bits a la derecha sin perder ninguno: ', C('04040404h → 02020202h → 01010101h → 80808080h → …'), ' (colores 4, 2, 1, 80h…). ', C('xor dl, dl'), ' pone DL a 0.')),
+      h('h2', null, '3 · Modo gráfico 13h (necesario para completar el código)'),
+      card(P(C('mov ax, 13h / int 10h'), ': 320 × 200 píxeles, 256 colores, ', h('b', null, '1 byte por píxel'), ', memoria de video en ', C('A000h'), '. Desplazamiento del píxel (x, y) = ', C('y × 320 + x'), '. Centro (160,100): ', C('320*100+160'), '. ', C('add di, 320'), ' baja una fila.'),
+        P('Tres columnas de 4 px separadas 8 px ⇒ columnas en ', C('[es:di]'), ', ', C('[es:di+12]'), ', ', C('[es:di+24]'), ' (4+8 = 12) y ', C('mov cx, 16'), ' para 16 de alto. Tres filas de 16×2 px separadas 8 ⇒ ', C('+320'), ', ', C('+320*10'), ', ', C('+320*20'), ' y ', C('mov cx, 4'), ' (16 ÷ 4) con ', C('add di, 4'), '.')),
+      h('h2', null, '4 · Video en modo texto y teclado (incluido · NO entra en esta prueba)'),
+      card(P('Modo texto 80×25: ', C('mov ax, 3 / int 10h'), '; memoria en ', C('B800h'), '. Cada celda ocupa ', h('b', null, '2 bytes'), ' (carácter + atributo) ⇒ una fila = 80 × 2 = ', h('b', null, '160 bytes'), ' y por eso se avanza ', C('add di, 2'), ' de carácter en carácter. Dirección = ', C('fila × 160 + columna × 2'), ' (', C('160*4+64'), ' = fila 4, columna 32). ', C('add di, 158'), ' = 160 − 2: una fila abajo y una columna a la izquierda.'),
+        P(C('mov [es:di], dx'), ' escribe DL (carácter) y DH (atributo). Atributo: bits 0-3 color del texto, bits 4-6 fondo (0001b azul, 0010b verde, 0100b rojo, 0000b negro, 1111b blanco).'),
+        P('Teclado: ', C('in al, 64h / test al, 1 / jz'), ' espera una tecla (bit 0 = hay dato); ', C('in al, 60h'), ' lee el scan code; ', C('cmp al, 127 / ja'), ': > 127 = tecla soltada (pulsación + 80h).')));
+  }
+  function secP2Res() {
+    const P2 = window.Programs2;
+    view.append(callout('good', 'Pregunta 3 (completar código) primero: es lo que más importa. La pregunta 2 (video + teclado) está resuelta abajo pero no entra en esta prueba.'));
+    P2.EXAMS2.filter(e => e.kind === 'complete').concat(P2.EXAMS2.filter(e => e.kind === 'trace')).forEach(e => {
+      const det = h('details', { open: e.kind === 'complete' && e.bat === 'A' ? true : null });
+      det.append(h('summary', null, h('span', { class: 'tag' }, 'Batería ' + e.bat), e.kind === 'complete' ? 'Pregunta 3 — completar el código' : 'Pregunta 2 — traceo (video + teclado, no entra)'));
+      const inner = h('div', { class: 'inner' });
+      if (e.kind === 'complete') {
+        inner.append(P('Debe mostrar ', e.goal, '.'), h('h4', null, 'Respuestas'), h('table', null, h('thead', null, h('tr', null, ['Hueco', 'Respuesta', 'Por qué'].map(t => h('th', null, t)))), h('tbody', null, e.blanks.map(b => h('tr', null, h('td', null, C(b.prompt)), h('td', null, C(b.answer)), h('td', null, b.why))))),
+          h('h4', null, 'Programa completo'), codeBlock(e.source), h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn primary', onclick: () => openSim(e.source, 'Batería ' + e.bat + ' · Pregunta 3', { timer: e.timer, demo: true, maxSteps: 3200 }) }, '▶ Ejecutar (temporizador, pila, pantalla)')));
+        if (e.bat === 'A') inner.append(callout('warn', 'En la hoja de la Batería A solo aparece «mov ax, ____» antes de «mov [es:4*8+2], cs». Escribe también «mov [es:4*8], ax»: sin guardar el desplazamiento la rutina no queda instalada.'));
+      } else {
+        const marks = new Set(); const ls = e.source.split('\n'); e.underlined.forEach(u => { const i = ls.findIndex((l, ix) => !marks.has(ix) && l.trim() === u); if (i >= 0) marks.add(i); });
+        inner.append(codeBlock(e.source, { mark: marks }));
+        e.scenarios.forEach(sc => { const r = Emu.runSource(e.source, { events: sc.events, maxSteps: 3000 }); inner.append(h('p', null, h('b', null, sc.label + ': '), 'atributo DH = ' + sc.attr + ' (' + ({ 1: 'azul', 2: 'verde', 4: 'rojo' }[sc.attr]) + ' sobre negro).'), UI.screenCanvas(Emu.screenAt(r.trace, r.trace.steps.length))); });
+        inner.append(h('h4', null, 'Respuestas'), h('ul', null, h('li', null, h('b', null, 'a) Modo de video: '), 'modo texto 80×25 (mov ax,3 / int 10h).'), h('li', null, h('b', null, 'b) Dónde empieza: '), e.bat === 'A' ? 'di = 160*4+64 ⇒ fila 4, columna 32 (barra superior); la inferior en la fila 20.' : 'di = 160*20+64 ⇒ fila 20, columna 32 (y fila 4 por di-160*16).'), h('li', null, h('b', null, 'c) Qué se muestra: '), 'la letra «z» formando dos barras (filas 4 y 20, columnas 32–63) y dos diagonales (filas 5–19) con el atributo según la tecla.'), h('li', null, h('b', null, 'd) Subrayadas: '), e.underlined.join(' · '))));
+      }
+      det.append(inner); view.append(det);
+    });
+  }
+  function secP2Ej() {
+    view.append(practiceBlock([
+      ['p2fill', 'Completar código (temporizador)', 'Elige las instrucciones que faltan; se comprueba ejecutando tu versión.'],
+      ['p2calc', 'Cálculos: vectores, ticks, ROR, píxeles', 'Direcciones de la tabla de vectores, ticks, rotaciones de EBX, desplazamientos en modo 13h, pila.'],
+      ['p2int', 'Interrupciones: teoría', 'Vectores, pila, IRET, EOI, STI/CLI, temporizador.'],
+      ['p2vf', 'Verdadero / Falso', 'Interrupciones, temporizador, 32 bits y modo gráfico.'],
+      ['p2txt', 'Video texto y teclado (no entra)', 'Incluido por si acaso: 160 bytes por fila, atributos, scan codes.', true]], 'p2cat',
+      callout('', 'Haz primero una serie de 10 de «Completar código» y otra de «Cálculos».')));
   }
 
   function memDecoder() {
@@ -485,7 +541,7 @@
      ===================================================================== */
   function secSim() {
     view.append(callout('', 'Elige una de las 6 pruebas (o su variante d), ejecuta paso a paso y mira cómo cambian registros, banderas y memoria. En ', h('b', null, '✎ Editar código'), ' puedes escribir el tuyo: cambia un salto y comprueba tu respuesta de d).'));
-    if (pendingSim) { sim.load(pendingSim.source, pendingSim.title); pendingSim = null; }
+    if (pendingSim) { sim.load(pendingSim.source, pendingSim.title, pendingSim.opts); pendingSim = null; }
     else if (!sim.loaded) { const p = UI.PRESETS()[4]; sim.load(p.source, p.label); }
     else sim.render();
     view.append(sim.el);

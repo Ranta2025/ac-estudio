@@ -110,25 +110,62 @@
   /* ---------- simulator ---------- */
   const PRESETS = () => {
     const list = [];
-    for (const e of Programs.EXAMS) {
-      list.push({ label: 'Batería ' + e.bat + ' ' + e.year, source: e.source });
+    for (const e of Programs.EXAMS) list.push({ group: '1ª prueba · Pregunta 3 (traceo)', label: 'Batería ' + e.bat + ' ' + e.year, source: e.source });
+    for (const e of Programs.EXAMS) for (const v of e.variants) list.push({ group: '1ª prueba · variantes del apartado d)', label: 'Batería ' + e.bat + ' ' + e.year + ' — variante d) ' + v.label, source: Programs.applyVariant(e.source, v) });
+    if (root.Programs2) {
+      for (const e of root.Programs2.EXAMS2) {
+        if (e.kind === 'complete') list.push({ group: '2ª prueba · Interrupciones y temporizador (prioridad)', label: 'Batería ' + e.bat + ' · Pregunta 3 resuelta — ' + (e.bat === 'A' ? 'columnas' : 'filas') + ' que cambian de color cada segundo', source: e.source, opts: { timer: e.timer, demo: true, maxSteps: 3200 } });
+        else for (const sc of e.scenarios) list.push({ group: '2ª prueba · Video y teclado (incluido, no entra)', label: 'Batería ' + e.bat + ' · Pregunta 2 — ' + sc.label, source: e.source, opts: { events: sc.events, maxSteps: 3000 } });
+      }
     }
-    for (const e of Programs.EXAMS) for (const v of e.variants) list.push({ label: 'Batería ' + e.bat + ' ' + e.year + ' — variante d) ' + v.label, source: Programs.applyVariant(e.source, v) });
     return list;
   };
+  const EGA = ['#000000', '#0000AA', '#00AA00', '#00AAAA', '#AA0000', '#AA00AA', '#AA5500', '#AAAAAA', '#555555', '#5555FF', '#55FF55', '#55FFFF', '#FF5555', '#FF55FF', '#FFFF55', '#FFFFFF'];
+  function vgaRGB(i) {
+    if (i < 16) { const c = EGA[i]; return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]; }
+    if (i < 32) { const g = [0, 5, 8, 11, 14, 17, 20, 24, 28, 32, 36, 40, 45, 50, 56, 63][i - 16] * 4; return [g, g, g]; }
+    // 32..247: hue cycle (approximation of the default VGA palette)
+    const n = i - 32, grp = Math.floor(n / 24), pos = n % 24, hue = (240 + pos * 15) % 360, sat = [1, 0.5, 0.25][grp % 3], val = [1, 0.5, 0.28][Math.floor(grp / 3) % 3];
+    const c = val * sat, x = c * (1 - Math.abs((hue / 60) % 2 - 1)), m = val - c; let r = 0, g = 0, b = 0;
+    if (hue < 60) { r = c; g = x; } else if (hue < 120) { r = x; g = c; } else if (hue < 180) { g = c; b = x; } else if (hue < 240) { g = x; b = c; } else if (hue < 300) { r = x; b = c; } else { r = c; b = x; }
+    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+  }
+  function screenCanvas(sc) {
+    const cv = h('canvas', { class: 'screen', width: sc.mode === 'text' ? 640 : 320, height: sc.mode === 'text' ? 400 : 200, role: 'img', 'aria-label': sc.mode === 'text' ? 'Pantalla en modo texto 80 por 25' : 'Pantalla en modo gráfico 320 por 200' });
+    const ctx = cv.getContext('2d');
+    if (sc.mode === 'text') {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 640, 400); ctx.font = '15px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline = 'alphabetic';
+      for (let r = 0; r < 25; r++) for (let c = 0; c < 80; c++) {
+        const i = r * 80 + c, ch = sc.chars[i], at = sc.attrs[i];
+        if ((at >> 4) & 0xF) { ctx.fillStyle = EGA[(at >> 4) & 0xF]; ctx.fillRect(c * 8, r * 16, 8, 16); }
+        if (ch !== 0x20 && ch !== 0) { ctx.fillStyle = EGA[at & 0xF]; ctx.fillText(String.fromCharCode(ch), c * 8, r * 16 + 13); }
+      }
+    } else {
+      const img = ctx.createImageData(320, 200); const cache = {};
+      for (let i = 0; i < 64000; i++) { const v = sc.gfx[i]; const c = cache[v] || (cache[v] = vgaRGB(v)); img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1]; img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255; }
+      ctx.putImageData(img, 0, 0);
+    }
+    return cv;
+  }
+  function ivtAt(run, k) {
+    const mem = {}; for (let i = 0; i < k && i < run.steps.length; i++) for (const w of run.steps[i].writes) if (w.addr < 0x400) for (let b = 0; b < w.bits / 8; b++) mem[w.addr + b] = Math.floor(w.val / Math.pow(256, b)) & 0xFF;
+    const out = []; for (let n = 0; n < 256; n++) { const off = (mem[n * 4] || 0) | ((mem[n * 4 + 1] || 0) << 8), seg = (mem[n * 4 + 2] || 0) | ((mem[n * 4 + 3] || 0) << 8); if ((n * 4 in mem) || (n * 4 + 2 in mem)) out.push({ n, off, seg, partial: !((n * 4 in mem) && (n * 4 + 2 in mem)) }); }
+    return out;
+  }
 
+  const INFO_HALT = new Set(['wait-key', 'demo']);
   function Sim() {
-    let src = '', title = '', prog = null, run = null, k = 0, editing = false, timer = null, tab = 'steps', draft = '';
+    let src = '', title = '', prog = null, run = null, k = 0, editing = false, timer = null, tab = 'steps', draft = '', runOpts = null;
     const rootEl = h('div');
     const presets = PRESETS();
 
     function assemble() {
       stop();
       prog = Emu.assemble(src);
-      run = prog.ok ? Emu.run(prog, { maxSteps: 5000 }) : null;
+      run = prog.ok ? Emu.run(prog, Object.assign({ maxSteps: 5000 }, runOpts || {})) : null;
       k = 0;
     }
-    function load(source, ttl) { src = source; draft = source; title = ttl || ''; editing = false; assemble(); render(); }
+    function load(source, ttl, opts) { src = source; draft = source; title = ttl || ''; runOpts = opts || null; editing = false; assemble(); render(); }
     function stop() { if (timer) { clearInterval(timer); timer = null; } }
     function total() { return run ? run.steps.length : 0; }
     function go(n) { k = Math.max(0, Math.min(total(), n)); render(); }
@@ -153,10 +190,12 @@
         const el = h('div', { class: 'reg' + (v !== pv ? ' chg' : '') }, h('div', { class: 'nm' }, name), h('div', { class: 'hx' }, Emu.hx(v, 16)), h('div', { class: 'sub' }, sub[0].replace('AH', name[0] + 'H').replace('AL', name[0] + 'L')));
         return el;
       };
-      return h('div', { class: 'regs' }, R('AX', 0), R('BX', 3, 'p'), R('CX', 1), R('DX', 2), R('SI', 6, 'p'), R('DI', 7, 'p'));
+      const use32 = run.steps.some(s => s.regs[3] > 0xFFFF);
+      const E = () => { const v = st.regs[3] >>> 0, pv = prev.regs[3] >>> 0; return h('div', { class: 'reg' + (v !== pv ? ' chg' : ''), style: 'grid-column: span 2' }, h('div', { class: 'nm' }, 'EBX'), h('div', { class: 'hx' }, Emu.hx(v, 32)), h('div', { class: 'sub' }, [3, 2, 1, 0].map(b => Emu.hx((v >>> (8 * b)) & 0xFF, 8)).join(' · ') + '  (4 bytes = 4 píxeles)')); };
+      return h('div', { class: 'regs' }, R('AX', 0), use32 ? E() : R('BX', 3, 'p'), R('CX', 1), R('DX', 2), R('SI', 6, 'p'), R('DI', 7, 'p'));
     }
     function flagsPanel(st, prev) {
-      return h('div', { class: 'flags' }, ...['ZF', 'CF', 'SF', 'OF', 'PF'].map(f => h('span', { class: 'flag' + (st.flags[f] ? ' on' : '') + (st.flags[f] !== prev.flags[f] ? ' chg' : ''), title: { ZF: 'Zero: resultado = 0', CF: 'Carry: acarreo/préstamo (sin signo)', SF: 'Signo: bit más alto = 1', OF: 'Overflow (con signo)', PF: 'Paridad del byte bajo' }[f] }, f + '=' + st.flags[f])));
+      return h('div', { class: 'flags' }, ...['ZF', 'CF', 'SF', 'OF', 'PF', 'IF'].map(f => h('span', { class: 'flag' + (st.flags[f] ? ' on' : '') + (st.flags[f] !== prev.flags[f] ? ' chg' : ''), title: { ZF: 'Zero: resultado = 0', CF: 'Carry: acarreo/préstamo (sin signo)', SF: 'Signo: bit más alto = 1', OF: 'Overflow (con signo)', PF: 'Paridad del byte bajo', IF: 'Interrupt Flag: 1 = el procesador atiende interrupciones (STI/CLI)' }[f] }, f + '=' + (st.flags[f] || 0))));
     }
     function memPanel(st, prev) {
       const ptrs = [['SI', 6], ['DI', 7], ['BX', 3]];
@@ -173,11 +212,32 @@
       }));
     }
 
+    function extraPanels(st) {
+      const out = [];
+      const ivt = ivtAt(run, k);
+      if (ivt.length) {
+        const nameAt = off => { const l = prog.labelInfo.find(x => x.addr === off && x.kind === 'code'); return l ? '  = ' + l.name : ''; };
+        const rows = ivt.map(e => h('tr', null,
+          h('td', null, 'INT ' + e.n + (e.n === 8 ? ' · IRQ0 temporizador' : e.n === 9 ? ' · IRQ1 teclado' : '')),
+          h('td', null, '4 × ' + e.n + ' = ' + Emu.hx(e.n * 4, 16)),
+          h('td', null, Emu.hx(e.seg, 16) + ':' + Emu.hx(e.off, 16) + (e.partial ? '  (falta guardar el segmento)' : nameAt(e.off)))));
+        out.push(h('div', { class: 'mem' }, h('div', { class: 'lab' }, 'Tabla de vectores de interrupción (0000:0000) — entradas usadas'),
+          h('table', null, h('thead', null, h('tr', null, ['Vector', 'Dirección', 'Rutina (CS:IP)'].map(t => h('th', null, t)))), h('tbody', null, rows))));
+      }
+      const sp = st.regs[4] & 0xFFFF;
+      if (sp !== prog.start) out.push(h('div', { class: 'mem' }, h('div', { class: 'lab' }, 'Pila (SS:SP = 0000:' + Emu.hx(sp, 16) + ')'), h('div', { class: 'cells' }, ['IP', 'CS', 'FLAGS'].map((nm, i) => h('div', { class: 'cell' }, h('div', { class: 'i' }, i === 0 ? 'SP (tope)' : '+' + 2 * i), h('div', { class: 'v' }, Emu.hx(st.stack[i], 16)), h('div', { class: 'x' }, nm))))));
+      if (Emu.usesVideo(run)) {
+        const sc = Emu.screenAt(run, k);
+        out.push(h('div', { class: 'mem' }, h('div', { class: 'lab' }, 'Pantalla — ' + (sc.mode === 'text' ? 'modo texto 80 × 25' : 'modo gráfico 13h, 320 × 200, 256 colores')), screenCanvas(sc)));
+      }
+      return out;
+    }
+
     function render() {
       rootEl.innerHTML = '';
-      const sel = h('select', { 'aria-label': 'Programa', onchange: ev => { const p = presets[+ev.target.value]; if (p) load(p.source, p.label); } },
+      const sel = h('select', { 'aria-label': 'Programa', onchange: ev => { const p = presets[+ev.target.value]; if (p) load(p.source, p.label, p.opts); } },
         h('option', { value: '' }, title && !presets.some(p => p.label === title) ? title : '— elige un programa —'),
-        ...presets.map((p, i) => h('option', { value: i, selected: p.label === title }, p.label)));
+        ...[...new Set(presets.map(p => p.group))].map(g => h('optgroup', { label: g }, ...presets.map((p, i) => ({ p, i })).filter(o => o.p.group === g).map(({ p, i }) => h('option', { value: i, selected: p.label === title }, p.label)))));
       const tb = h('div', { class: 'toolbar' }, sel,
         h('button', { class: 'btn', onclick: () => { editing = !editing; if (editing) draft = src; render(); } }, editing ? 'Cancelar edición' : '✎ Editar código'));
       rootEl.append(tb);
@@ -214,11 +274,11 @@
       if (k === 0) ex = h('div', { class: 'explain' }, h('div', { class: 'step' }, 'Estado inicial'), h('div', null, 'El BIOS acaba de copiar el sector a ' + Emu.hx(prog.start, 16) + ' y salta ahí. Los registros se muestran en 0 (en una máquina real tienen valores desconocidos, por eso el programa los inicializa).'), nextIt ? h('div', { class: 'next' }, 'Siguiente instrucción: ', h('code', null, nextIt.text)) : null);
       else {
         const s = run.steps[k - 1];
-        ex = h('div', { class: 'explain' }, h('div', { class: 'step' }, 'Paso ' + s.n + ' · IP = ' + Emu.hx(s.ip, 16) + ' · línea ' + (s.line + 1)), h('div', { class: 'ins' }, s.text), h('div', null, s.explain),
-          finished ? h('div', { class: 'next halt' }, run.halted.reason === 'jmp $' ? '✔ Fin de la simulación: el programa se detuvo en «jmp $».' : '⚠ ' + run.halted.msg) : (nextIt ? h('div', { class: 'next' }, 'Siguiente: ', h('code', null, nextIt.text)) : null));
+        ex = h('div', { class: 'explain' }, h('div', { class: 'step' }, 'Paso ' + s.n + ' · IP = ' + Emu.hx(s.ip, 16) + (s.line != null ? ' · línea ' + (s.line + 1) : ' · INTERRUPCIÓN DE HARDWARE')), h('div', { class: 'ins' }, s.text), h('div', null, s.explain),
+          finished ? h('div', { class: 'next halt' }, run.halted.reason === 'jmp $' ? '✔ Fin de la simulación: el programa se detuvo en «jmp $».' : INFO_HALT.has(run.halted.reason) ? 'ℹ ' + run.halted.msg : '⚠ ' + run.halted.msg) : (nextIt ? h('div', { class: 'next' }, 'Siguiente: ', h('code', null, nextIt.text)) : null));
       }
       const left = h('div', null, codeBlock(src, { cur: nextIt ? nextIt.line : null, done: lastLine, onClick: null }));
-      const right = h('div', null, ex, regsPanel(st, prev), flagsPanel(st, prev), memPanel(st, prev));
+      const right = h('div', null, ex, regsPanel(st, prev), flagsPanel(st, prev), memPanel(st, prev), ...extraPanels(st));
       rootEl.append(h('div', { class: 'sim' }, left, right));
 
       const tabs = h('div', { class: 'tabs', role: 'tablist' },
@@ -232,8 +292,8 @@
       } else if (tab === 'iter') {
         rootEl.append(h('p', { class: 'muted small' }, 'Una fila por vuelta del ciclo — es el formato típico de un traceo en la prueba. Pulsa una fila para saltar a ese punto.'), iterTable(prog, run, n => go(n)));
       } else rootEl.append(sectorMap(prog));
-      if (!finished && run.halted.reason !== 'jmp $') rootEl.append(h('div', { class: 'error' }, run.halted.msg));
-      if (finished && run.halted.reason !== 'jmp $') rootEl.append(h('div', { class: 'error' }, run.halted.msg));
+      if (!INFO_HALT.has(run.halted.reason) && run.halted.reason !== 'jmp $') rootEl.append(h('div', { class: 'error' }, run.halted.msg));
+      if (runOpts && (runOpts.timer || runOpts.events)) rootEl.append(h('p', { class: 'muted small' }, 'Tiempo simulado: ' + (runOpts.timer ? 'una interrupción del temporizador (IRQ0) cada ' + runOpts.timer.period + ' instrucciones (en un PC real son 18.2 por segundo). ' : '') + (runOpts.events ? 'Eventos de teclado programados: ' + runOpts.events.map(e => 'scan code ' + Emu.hx(e.scan, 8) + ' tras ' + e.at + ' instrucciones').join('; ') + '.' : '')));
     }
 
     document.addEventListener('keydown', ev => {
@@ -263,7 +323,7 @@
 
     function solutionBar(source, label) {
       if (!source || !hooks.openSim) return null;
-      return h('button', { class: 'btn sm', onclick: () => hooks.openSim(source, label || 'Ejercicio') }, '🔍 Ver paso a paso en el simulador');
+      return h('button', { class: 'btn sm', onclick: () => hooks.openSim(source, label || 'Ejercicio', ex.runOpts) }, '🔍 Ver paso a paso en el simulador');
     }
     function feedback(ok, msg, extra) {
       out.innerHTML = '';
@@ -419,5 +479,5 @@
     host.append(card);
   }
 
-  root.UI = { h, esc, Store, Stats, hl, codeBlock, iterTable, sectorMap, Sim, renderExercise, PRESETS };
+  root.UI = { h, esc, Store, Stats, hl, codeBlock, iterTable, sectorMap, Sim, renderExercise, PRESETS, screenCanvas, vgaRGB };
 })(window);

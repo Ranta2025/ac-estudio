@@ -174,3 +174,7 @@ input.ok { border-color: var(--good); background: var(--good-soft); } input.no {
 .fxrow { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
 .fxrow > b { min-width: 2em; }
 td.fx { overflow: visible; }
+
+/* screen panel */
+canvas.screen { display: block; width: 100%; max-width: 640px; height: auto; background: #000; border: 2px solid var(--line); border-radius: 6px; image-rendering: pixelated; }
+.opt-note { font-size: .85rem; }
